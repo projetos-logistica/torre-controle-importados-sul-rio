@@ -1,0 +1,170 @@
+{
+  "name": "02 - Importados SUL RIO - Acompanhamento (PATCH so alterados)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "flow02_schedule",
+      "name": "01 - A cada 5 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.microsoft.com/v1.0/sites/somagrupo.sharepoint.com,075fb68d-54fc-4858-b09d-af763d92b964,3c8776be-edcf-4010-91eb-5aecfe30eb0d/lists/1f2c46e7-91ba-4edf-96a4-78c8124ba125/items?$expand=fields&$top=200",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "flow02_read",
+      "name": "02 - Ler lista SharePoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Uma entrada da API Graph contém o array value.\nconst pages = $input.all();\nconst out = [];\nfor (const page of pages) {\n  for (const item of (page.json.value || [])) {\n    const f = item.fields || {};\n    const chave = String(f.CHAVE_NFE || '').trim();\n    if (!/^\\d{44}$/.test(chave)) continue;\n    if (String(f.STATUS_INTEGRACAO || '').trim().toUpperCase() !== 'INTEGRADO') continue;\n    out.push({json: {item_id: String(item.id), chave_nfe: chave}});\n  }\n}\nreturn out;"
+      },
+      "id": "flow02_filter",
+      "name": "03 - Separar NFs integradas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DECLARE @CHAVE_NFE VARCHAR(44) = '{{ $json.chave_nfe }}';\n-- Consulta por NF integrada; retorna sempre 1 linha, mesmo sem eventos.\n-- CHAVE_NFE validada pelo node 03 como 44 digitos.\n-- Para producao, migrar para parametros nativos confirmados no ambiente.\n;WITH AG AS (\n    SELECT\n        R.CHAVE_NFE,\n        R.DATA_HORA_AGENDAMENTO,\n        R.DATA_INICIO_RECEBIMENTO,\n        R.DATA_FIM_RECEBIMENTO,\n        ROW_NUMBER() OVER (\n            PARTITION BY R.CHAVE_NFE\n            ORDER BY R.DATA_HORA_AGENDAMENTO DESC,\n                     R.DATA_FIM_RECEBIMENTO DESC,\n                     R.DATA_INICIO_RECEBIMENTO DESC\n        ) AS RN\n    FROM LL_RECEBIMENTO_AGENDADO R\n    WHERE R.CHAVE_NFE = @CHAVE_NFE\n), EMB AS (\n    SELECT\n        I.CHAVE_NFE,\n        C.ROMANEIO,\n        C.TRANSPORTADORA,\n        C.PLACA,\n        C.MOTORISTA,\n        C.DATA_EMBARQUE,\n        ROW_NUMBER() OVER (\n            PARTITION BY I.CHAVE_NFE\n            ORDER BY CASE WHEN C.DATA_EMBARQUE IS NOT NULL THEN 0 ELSE 1 END,\n                     C.DATA_EMBARQUE DESC,\n                     C.DATA_HORA_CRIACAO DESC,\n                     C.ROMANEIO DESC\n        ) AS RN\n    FROM SS_ROMANEIOS_CARGA_ITEM I\n    INNER JOIN SS_ROMANEIOS_CARGA C ON C.ROMANEIO = I.ROMANEIO\n    WHERE I.CHAVE_NFE = @CHAVE_NFE\n      AND LTRIM(RTRIM(C.TIPO_ROMANEIO)) = 'SUL X RJ (IMPORTADO)'\n)\nSELECT\n    @CHAVE_NFE AS CHAVE_NFE,\n    AG.DATA_HORA_AGENDAMENTO AS DATA_AGENDAMENTO,\n    AG.DATA_INICIO_RECEBIMENTO AS INICIO_CONFERENCIA_SUL,\n    AG.DATA_FIM_RECEBIMENTO AS FIM_CONFERENCIA_SUL,\n    EMB.ROMANEIO,\n    LTRIM(RTRIM(EMB.TRANSPORTADORA)) AS TRANSPORTADORA,\n    LTRIM(RTRIM(EMB.PLACA)) AS PLACA,\n    LTRIM(RTRIM(EMB.MOTORISTA)) AS MOTORISTA,\n    EMB.DATA_EMBARQUE,\n    CASE WHEN EMB.DATA_EMBARQUE IS NOT NULL\n         THEN DATEADD(DAY, 2, CAST(EMB.DATA_EMBARQUE AS DATE))\n    END AS PREVISAO_CHEGADA\nFROM (SELECT 1 AS X) BASE\nLEFT JOIN AG ON AG.RN = 1\nLEFT JOIN EMB ON EMB.RN = 1;",
+        "options": {}
+      },
+      "id": "flow02_sql",
+      "name": "04 - Consultar eventos SUL SQL",
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// 05 - ATUALIZAR APENAS CAMPOS ALTERADOS (FLUXO 02)\n// Compara retorno SQL com valores atuais do SharePoint (node 02).\n// Nao sobrescreve valores existentes com NULL.\nconst sql = $input.all();\nconst pages = $('02 - Ler lista SharePoint').all();\nconst pendentes = $('03 - Separar NFs integradas').all();\nconst norm = v => v === undefined || v === null ? '' : String(v).trim();\nconst spPorId = new Map();\nfor (const page of pages) {\n  for (const item of (page.json.value || [])) {\n    spPorId.set(norm(item.id), item.fields || {});\n  }\n}\nconst idPorChave = new Map();\nfor (const item of pendentes) {\n  const chave = norm(item.json.chave_nfe);\n  if (!/^\\d{44}$/.test(chave)) throw new Error('CHAVE_NFE invalida');\n  if (idPorChave.has(chave)) throw new Error('CHAVE_NFE duplicada no SharePoint: ' + chave);\n  idPorChave.set(chave, norm(item.json.item_id));\n}\n// Compara instantes com fuso caso informados como ISO; nao converte\n// horario SQL como se fosse UTC diferente. Confirmar UTC x BRT antes de ativar.\nfunction normalizeDate(value, dateOnly) {\n  if (value === null || value === undefined || value === '') return null;\n  const v = String(value).trim();\n  if (!/^\\d{4}-\\d{2}-\\d{2}(?:T|$)/.test(v)) throw new Error('Data invalida: '+v);\n  return dateOnly ? v.slice(0,10) : v;\n}\nfunction sameDate(a,b,dateOnly) {\n  if (dateOnly) return norm(a).slice(0,10) === norm(b).slice(0,10);\n  const x=Date.parse(String(a)), y=Date.parse(String(b));\n  if (!Number.isNaN(x) && !Number.isNaN(y)) return Math.abs(x-y)<1000;\n  return norm(a)===norm(b);\n}\nconst output = [];\nconst visto = new Set();\nfor (const item of sql) {\n  const d=item.json;\n  const chave=norm(d.CHAVE_NFE);\n  const id=idPorChave.get(chave);\n  if (!id) throw new Error('SQL retornou CHAVE_NFE sem correspondente no SharePoint: '+chave);\n  if (visto.has(chave)) throw new Error('SQL retornou CHAVE_NFE duplicada: '+chave);\n  visto.add(chave);\n  const atual=spPorId.get(id);\n  if (!atual) throw new Error('ID nao encontrado nos registros lidos: '+id);\n  const alteracoes={};\n  function setText(nome,valor) {\n    const novo=norm(valor); // nao apagar campos com valor NULL/vazio\n    if (novo && novo!==norm(atual[nome])) alteracoes[nome]=novo;\n  }\n  function setDate(nome,valor,soData=false) {\n    const novo=normalizeDate(valor,soData);\n    if (novo && !sameDate(novo,atual[nome],soData)) alteracoes[nome]=novo;\n  }\n  setDate('DATA_AGENDAMENTO', d.DATA_AGENDAMENTO);\n  setDate('INICIO_CONFERENCIA_SUL', d.INICIO_CONFERENCIA_SUL);\n  setDate('FIM_CONFERENCIA_SUL', d.FIM_CONFERENCIA_SUL);\n  setText('ROMANEIO', d.ROMANEIO);\n  setText('TRANSPORTADORA', d.TRANSPORTADORA);\n  setText('PLACA', d.PLACA);\n  setText('MOTORISTA', d.MOTORISTA);\n  setDate('DATA_EMBARQUE', d.DATA_EMBARQUE);\n  setDate('PREVISAO_CHEGADA', d.PREVISAO_CHEGADA, true);\n  // Sem mudancas = sem requisicao PATCH, preservando versao e historico.\n  if (!Object.keys(alteracoes).length) continue;\n  output.push({json:{item_id:id,chave_nfe:chave,fields:alteracoes,campos_alterados:Object.keys(alteracoes)}});\n}\nreturn output;\n"
+      },
+      "id": "flow02_prepare",
+      "name": "05 - Preparar campos operacionais",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://graph.microsoft.com/v1.0/sites/somagrupo.sharepoint.com,075fb68d-54fc-4858-b09d-af763d92b964,3c8776be-edcf-4010-91eb-5aecfe30eb0d/lists/1f2c46e7-91ba-4edf-96a4-78c8124ba125/items/' + $json.item_id + '/fields' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.fields }}",
+        "options": {}
+      },
+      "id": "flow02_patch",
+      "name": "06 - Atualizar campos SUL SharePoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        260
+      ]
+    }
+  ],
+  "connections": {
+    "01 - A cada 5 minutos": {
+      "main": [
+        [
+          {
+            "node": "02 - Ler lista SharePoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 - Ler lista SharePoint": {
+      "main": [
+        [
+          {
+            "node": "03 - Separar NFs integradas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 - Separar NFs integradas": {
+      "main": [
+        [
+          {
+            "node": "04 - Consultar eventos SUL SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 - Consultar eventos SUL SQL": {
+      "main": [
+        [
+          {
+            "node": "05 - Preparar campos operacionais",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 - Preparar campos operacionais": {
+      "main": [
+        [
+          {
+            "node": "06 - Atualizar campos SUL SharePoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

@@ -1,0 +1,170 @@
+{
+  "name": "03 - Importados SUL RIO - Entrada Fiscal (somente alterados)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "flow02_schedule",
+      "name": "01 - A cada 5 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.microsoft.com/v1.0/sites/somagrupo.sharepoint.com,075fb68d-54fc-4858-b09d-af763d92b964,3c8776be-edcf-4010-91eb-5aecfe30eb0d/lists/1f2c46e7-91ba-4edf-96a4-78c8124ba125/items?$expand=fields&$top=200",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "flow02_read",
+      "name": "02 - Ler lista SharePoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Filtra notas fiscais integradas e com chave valida.\n// Continuamos acompanhando ate a entrada fiscal, independentemente do SUL.\nconst out = [];\nconst seen = new Set();\nfor (const pagina of $input.all()) {\n  for (const item of (pagina.json.value || [])) {\n    const f = item.fields || {};\n    const chave = String(f.CHAVE_NFE ?? '').trim();\n    if (!/^\\d{44}$/.test(chave)) continue;\n    if (String(f.STATUS_INTEGRACAO || '').trim().toUpperCase() !== 'INTEGRADO') continue;\n    if (seen.has(chave)) throw new Error('Chave NF-e duplicada na lista: ' + chave);\n    seen.add(chave);\n    out.push({json: { item_id: String(item.id), chave_nfe: chave }});\n  }\n}\nreturn out;"
+      },
+      "id": "flow02_filter",
+      "name": "03 - Separar NFs para entrada fiscal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SET NOCOUNT ON;\n-- CHAVE_NFE validada como 44 digitos no node 03.\nDECLARE @CHAVE_NFE VARCHAR(44) = '{{ $json.chave_nfe }}';\n\n;WITH ENTRADA_ATUAL AS (\n    SELECT\n        E.CHAVE_NFE,\n        E.DATA_DIGITACAO,\n        LTRIM(RTRIM(E.FILIAL)) AS FILIAL_ENTRADA,\n        ROW_NUMBER() OVER (\n            PARTITION BY E.CHAVE_NFE\n            ORDER BY E.DATA_DIGITACAO DESC, E.NUMERO_ENTRADA DESC\n        ) AS RN\n    FROM ENTRADAS E\n    WHERE E.CHAVE_NFE = @CHAVE_NFE\n      AND ISNULL(E.NOTA_CANCELADA, 0) = 0\n      AND E.DATA_DIGITACAO IS NOT NULL\n)\nSELECT\n    @CHAVE_NFE AS CHAVE_NFE,\n    CONVERT(VARCHAR(10), E.DATA_DIGITACAO, 23) AS DATA_ENTRADA_FISCAL,\n    E.FILIAL_ENTRADA\nFROM (SELECT 1 AS BASE) X\nLEFT JOIN ENTRADA_ATUAL E ON E.RN = 1;",
+        "options": {}
+      },
+      "id": "flow02_sql",
+      "name": "04 - Consultar entrada fiscal SQL",
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Compara entrada fiscal SQL com dados atuais da lista.\n// Somente PATCH para datas novas/diferentes; NAO altera recebimento fisico.\nconst normalizar = v => String(v ?? '').trim();\nconst sql = $input.all();\nconst lista = $('02 - Ler lista SharePoint').all();\nconst originais = $('03 - Separar NFs para entrada fiscal').all();\n\nconst porId = new Map();\nfor (const pagina of lista) {\n  for (const item of pagina.json.value || []) {\n    porId.set(normalizar(item.id), item.fields || {});\n  }\n}\nconst idPorChave = new Map();\nfor (const item of originais) {\n  const {item_id, chave_nfe} = item.json;\n  if (idPorChave.has(chave_nfe)) throw new Error('Duplicidade de CHAVE_NFE: ' + chave_nfe);\n  idPorChave.set(chave_nfe, normalizar(item_id));\n}\nconst compararData = valor => {\n  const v = normalizar(valor);\n  return v ? v.slice(0,10) : '';\n};\nconst out = [];\nfor (const item of sql) {\n  const d = item.json;\n  const chave = normalizar(d.CHAVE_NFE);\n  const id = idPorChave.get(chave);\n  if (!id) throw new Error('Chave nao encontrada na lista: ' + chave);\n  const atual = porId.get(id) || {};\n  const data = compararData(d.DATA_ENTRADA_FISCAL);\n  // Nao sobrescreve valores ja presentes quando SQL nao tem entrada.\n  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(data)) continue;\n  if (data === compararData(atual.DATA_ENTRADA_FISCAL)) continue;\n  // Filial e devolvida para auditoria, nao atualizada automaticamente.\n  out.push({json:{\n    item_id: id,\n    chave_nfe: chave,\n    filial_entrada: normalizar(d.FILIAL_ENTRADA),\n    fields:{ DATA_ENTRADA_FISCAL: data }\n  }});\n}\nreturn out;"
+      },
+      "id": "flow02_prepare",
+      "name": "05 - Comparar entrada fiscal com SharePoint",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={ ('https://graph.microsoft.com/v1.0/sites/somagrupo.sharepoint.com,075fb68d-54fc-4858-b09d-af763d92b964,3c8776be-edcf-4010-91eb-5aecfe30eb0d/lists/1f2c46e7-91ba-4edf-96a4-78c8124ba125/items/' + $json.item_id + '/fields').trim() }",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.fields }}",
+        "options": {}
+      },
+      "id": "flow02_patch",
+      "name": "06 - Atualizar entrada fiscal SharePoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        260
+      ]
+    }
+  ],
+  "connections": {
+    "01 - A cada 5 minutos": {
+      "main": [
+        [
+          {
+            "node": "02 - Ler lista SharePoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 - Ler lista SharePoint": {
+      "main": [
+        [
+          {
+            "node": "03 - Separar NFs para entrada fiscal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 - Separar NFs para entrada fiscal": {
+      "main": [
+        [
+          {
+            "node": "04 - Consultar entrada fiscal SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 - Consultar entrada fiscal SQL": {
+      "main": [
+        [
+          {
+            "node": "05 - Comparar entrada fiscal com SharePoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 - Comparar entrada fiscal com SharePoint": {
+      "main": [
+        [
+          {
+            "node": "06 - Atualizar entrada fiscal SharePoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

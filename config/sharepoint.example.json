@@ -1,0 +1,9 @@
+{
+  "siteName": "Projetos-LogLabs",
+  "listName": "Controle de Importados - SUL RIO",
+  "siteId": "somagrupo.sharepoint.com,075fb68d-54fc-4858-b09d-af763d92b964,3c8776be-edcf-4010-91eb-5aecfe30eb0d",
+  "listId": "1f2c46e7-91ba-4edf-96a4-78c8124ba125",
+  "graphBaseUrl": "https://graph.microsoft.com/v1.0/sites/somagrupo.sharepoint.com,075fb68d-54fc-4858-b09d-af763d92b964,3c8776be-edcf-4010-91eb-5aecfe30eb0d/lists/1f2c46e7-91ba-4edf-96a4-78c8124ba125",
+  "timezone": "America/Sao_Paulo",
+  "intervalMinutes": 5
+}

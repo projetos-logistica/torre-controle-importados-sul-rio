@@ -1,0 +1,168 @@
+{
+  "name": "01 - Importados SUL RIO | Faturamento SharePoint (5min)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "1",
+      "name": "01 - A cada 5 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.microsoft.com/v1.0/sites/COLOQUE_SITE_ID/lists/COLOQUE_LIST_ID/items?$expand=fields&$top=200",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "2",
+      "name": "02 - Ler lista SharePoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        450,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.first().json.value || [];\nreturn items.filter(item => {\n  const f = item.fields || {};\n  const status = String(f.STATUS_INTEGRACAO || '').trim().toUpperCase();\n  return f.NOTA_FISCAL && f.SERIE_NF && (!status || status === 'PENDENTE' || status === 'NÃO LOCALIZADO' || status === 'NAO LOCALIZADO');\n}).map(item => {\n  const f = item.fields;\n  const nf = String(f.NOTA_FISCAL).trim();\n  const serie = String(f.SERIE_NF).trim();\n  if (!/^\\d{1,20}$/.test(nf) || !/^\\d{1,10}$/.test(serie)) return null;\n  return {json:{spItemId:Number(item.id),nota:nf,serie:serie}};\n}).filter(Boolean);"
+      },
+      "id": "3",
+      "name": "03 - Filtrar notas pendentes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    {{ $json.spItemId }} AS SP_ITEM_ID,\n    '{{ $json.nota }}' AS NOTA_INFORMADA,\n    '{{ $json.serie }}' AS SERIE_INFORMADA,\n    COALESCE(QT.QTDE_NOTAS, 0) AS QTDE_NOTAS_ENCONTRADAS,\n    A.CHAVE_NFE,\n    CASE\n        WHEN LTRIM(RTRIM(A.NOME_CLIFOR)) = 'CONTROLE QUALIDADE ATAC' THEN 'ATACADO'\n        WHEN LTRIM(RTRIM(A.NOME_CLIFOR)) = 'CONTROLE QUALIDADE VAREJO' THEN 'VAREJO'\n        ELSE LTRIM(RTRIM(A.NOME_CLIFOR))\n    END AS CANAL,\n    I.MARCA,\n    I.QUANTIDADE,\n    I.VALOR\nFROM (SELECT 1 AS N) Z\nOUTER APPLY (\n    SELECT COUNT(*) AS QTDE_NOTAS\n    FROM FATURAMENTO F\n    WHERE TRY_CONVERT(BIGINT,LTRIM(RTRIM(F.NF_SAIDA))) = TRY_CONVERT(BIGINT,'{{ $json.nota }}')\n      AND LTRIM(RTRIM(F.SERIE_NF)) = '{{ $json.serie }}'\n) QT\nOUTER APPLY (\n    SELECT TOP 1 F.FILIAL, F.NF_SAIDA, F.SERIE_NF, F.CHAVE_NFE, F.NOME_CLIFOR\n    FROM FATURAMENTO F\n    WHERE TRY_CONVERT(BIGINT,LTRIM(RTRIM(F.NF_SAIDA))) = TRY_CONVERT(BIGINT,'{{ $json.nota }}')\n      AND LTRIM(RTRIM(F.SERIE_NF)) = '{{ $json.serie }}'\n    ORDER BY F.DATA_HORA_EMISSAO DESC\n) A\nOUTER APPLY (\n    SELECT\n        SUM(FP.QTDE) AS QUANTIDADE,\n        SUM(FP.VALOR) AS VALOR,\n        (SELECT STRING_AGG(D.MARCA, ', ')\n         FROM (SELECT DISTINCT LTRIM(RTRIM(LR.DESC_REDE_LOJAS)) AS MARCA\n               FROM FATURAMENTO_PROD P2\n               LEFT JOIN PRODUTOS P ON P.PRODUTO = P2.PRODUTO\n               LEFT JOIN LOJAS_REDE LR ON LR.REDE_LOJAS = P.REDE_LOJAS\n               WHERE P2.FILIAL = A.FILIAL AND P2.NF_SAIDA=A.NF_SAIDA\n                 AND P2.SERIE_NF=A.SERIE_NF AND LR.DESC_REDE_LOJAS IS NOT NULL) D) AS MARCA\n    FROM FATURAMENTO_PROD FP\n    WHERE FP.FILIAL=A.FILIAL AND FP.NF_SAIDA=A.NF_SAIDA AND FP.SERIE_NF=A.SERIE_NF\n) I;"
+      },
+      "id": "4",
+      "name": "04 - Consultar faturamento SQL",
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        950,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(({json:r}) => {\n const n=Number(r.QTDE_NOTAS_ENCONTRADAS || 0);\n const status=n===0?'NÃO LOCALIZADO':n>1?'ERRO':'INTEGRADO';\n const fields={STATUS_INTEGRACAO:status};\n if(n===1 && r.CHAVE_NFE){\n  fields.CHAVE_NFE=String(r.CHAVE_NFE).trim();\n  fields.CANAL=r.CANAL ? String(r.CANAL).trim() : null;\n  fields.MARCA=r.MARCA ? String(r.MARCA).trim() : null;\n  fields.QUANTIDADE=r.QUANTIDADE===null?null:Number(r.QUANTIDADE);\n  fields.VALOR=r.VALOR===null?null:Number(r.VALOR);\n }\n return {json:{spItemId:Number(r.SP_ITEM_ID),fields,diagnostico:n>1?'NF e série correspondem a mais de uma filial. Exige identificação da filial.':status}};\n});"
+      },
+      "id": "5",
+      "name": "05 - Preparar atualizacao",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://graph.microsoft.com/v1.0/sites/COLOQUE_SITE_ID/lists/COLOQUE_LIST_ID/items/{{ $json.spItemId }}/fields",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.fields }}",
+        "options": {}
+      },
+      "id": "6",
+      "name": "06 - Atualizar mesma linha no SharePoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1460,
+        280
+      ]
+    }
+  ],
+  "connections": {
+    "01 - A cada 5 minutos": {
+      "main": [
+        [
+          {
+            "node": "02 - Ler lista SharePoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 - Ler lista SharePoint": {
+      "main": [
+        [
+          {
+            "node": "03 - Filtrar notas pendentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 - Filtrar notas pendentes": {
+      "main": [
+        [
+          {
+            "node": "04 - Consultar faturamento SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 - Consultar faturamento SQL": {
+      "main": [
+        [
+          {
+            "node": "05 - Preparar atualizacao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 - Preparar atualizacao": {
+      "main": [
+        [
+          {
+            "node": "06 - Atualizar mesma linha no SharePoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo"
+  },
+  "active": false,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

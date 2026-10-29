@@ -1,0 +1,123 @@
+{
+  "name": "04 - Importados SUL RIO - Data Recebimento Fisico (5min)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "f04_schedule",
+      "name": "01 - A cada 5 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.microsoft.com/v1.0/sites/somagrupo.sharepoint.com,075fb68d-54fc-4858-b09d-af763d92b964,3c8776be-edcf-4010-91eb-5aecfe30eb0d/lists/1f2c46e7-91ba-4edf-96a4-78c8124ba125/items?$expand=fields&$top=200",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {}
+      },
+      "id": "f04_read",
+      "name": "02 - Ler lista SharePoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// FLUXO 04 - Registrar recebimento fisico no RIO\n// Registra o horario da DETECCAO pelo n8n (UTC), nao o instante exato do clique.\n// Para notas confirmadas antes de ativar este fluxo, nao representa a data historica real.\nconst paginas = $input.all();\nconst agora = new Date().toISOString();\nconst base = 'https://graph.microsoft.com/v1.0/sites/somagrupo.sharepoint.com,075fb68d-54fc-4858-b09d-af763d92b964,3c8776be-edcf-4010-91eb-5aecfe30eb0d/lists/1f2c46e7-91ba-4edf-96a4-78c8124ba125';\nconst saida = [];\nconst vistos = new Set();\n\nfor (const pagina of paginas) {\n  const itens = Array.isArray(pagina.json.value) ? pagina.json.value : [];\n  for (const item of itens) {\n    const id = String(item.id ?? '').trim();\n    const f = item.fields || {};\n    const recebido = f.RECEBIMENTO_RIO === true || f.RECEBIMENTO_RIO === 1 ||\n      String(f.RECEBIMENTO_RIO ?? '').toLowerCase() === 'true' ||\n      String(f.RECEBIMENTO_RIO ?? '') === '1';\n    const temData = f.DATA_RECEBIMENTO_RIO != null && String(f.DATA_RECEBIMENTO_RIO).trim() !== '';\n    if (!id || !recebido || temData || vistos.has(id)) continue;\n    vistos.add(id);\n    saida.push({json: {\n      item_id: id,\n      identificacao: String(f.Title ?? '').trim(),\n      data_recebimento_rio: agora,\n      url_sharepoint: `${base}/items/${encodeURIComponent(id)}/fields`\n    }});\n  }\n}\nreturn saida;\n"
+      },
+      "id": "f04_filter",
+      "name": "03 - Preparar recebimentos sem data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json.url_sharepoint }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "DATA_RECEBIMENTO_RIO",
+              "value": "={{ $json.data_recebimento_rio }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f04_patch",
+      "name": "04 - Gravar data no SharePoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "01 - A cada 5 minutos": {
+      "main": [
+        [
+          {
+            "node": "02 - Ler lista SharePoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 - Ler lista SharePoint": {
+      "main": [
+        [
+          {
+            "node": "03 - Preparar recebimentos sem data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 - Preparar recebimentos sem data": {
+      "main": [
+        [
+          {
+            "node": "04 - Gravar data no SharePoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}

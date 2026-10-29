@@ -1,0 +1,19 @@
+# Credenciais e dados locais
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.key
+secrets/
+credentials/
+# Cache e arquivos temporarios
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+.tmp/
+exports-privados/
