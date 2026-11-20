@@ -267,3 +267,7 @@ Responsável por:
 # 🚀 Resultado Esperado
 
 Garantir o acompanhamento integral das Notas Fiscais de importados entre o SUL e o CD Rio, com informações atualizadas automaticamente, rastreabilidade ponta a ponta e redução significativa de controles manuais.
+
+
+
+### Nome do Fluxo N8N: *Torre de Controle Importados SUL x RIO - Google Sheets*
