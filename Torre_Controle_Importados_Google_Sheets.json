@@ -1,0 +1,840 @@
+{
+  "name": "Torre de Controle Importados SUL x RIO - Google Sheets",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## A — Cadastro de NF (formulário)\nUsuário informa NF + série **ou** chave. Valida, consulta o faturamento e cria a linha completa na planilha. Resposta imediata na tela.",
+        "height": 330,
+        "width": 2000,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        -120
+      ],
+      "id": "bdca2116-95ca-412d-87f0-a06445d1acb2",
+      "name": "Nota A"
+    },
+    {
+      "parameters": {
+        "authentication": "basicAuth",
+        "formTitle": "Cadastrar NF – Importados SUL x RIO",
+        "formDescription": "Informe a nota fiscal e a série, ou a chave de acesso da NF-e.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Nota fiscal",
+              "placeholder": "Ex.: 000027607"
+            },
+            {
+              "fieldLabel": "Série",
+              "placeholder": "Ex.: 12"
+            },
+            {
+              "fieldLabel": "Chave de acesso (NF-e)",
+              "placeholder": "44 dígitos (opcional: substitui NF e série; aceita leitor de código de barras)"
+            },
+            {
+              "fieldLabel": "Carro",
+              "placeholder": "Ex.: 182-26"
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "3e5db13d-31fb-462c-8c4b-e439cef79852",
+      "name": "Formulário - Cadastrar NF",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -120,
+        0
+      ],
+      "webhookId": "8831498d-07f8-450d-8c88-8ef87dafb7ab"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------- utilitarios comuns ----------\nconst txt = v => String(v ?? '').trim().replace(/^'/, '');\nconst so = v => String(v ?? '').replace(/\\D/g, '');\n// Prefixo ' faz o Google Sheets gravar como texto\n// (preserva zeros a esquerda, 44 digitos da chave e referencias como 27.00020)\nconst T = v => \"'\" + txt(v);\nconst agoraISO = () => $now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd HH:mm:ss');\nconst isoParaBR = iso => {\n  const m = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(txt(iso));\n  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';\n};\nconst normSerie = s => (so(s) ? String(Number(so(s))) : '');\nconst identificacao = (nf, serie) => `${so(nf).padStart(9, '0')}-${normSerie(serie)}`;\n\nfunction dvChave(c43) {\n  let peso = 2, soma = 0;\n  for (let i = c43.length - 1; i >= 0; i--) {\n    soma += Number(c43[i]) * peso;\n    peso = peso === 9 ? 2 : peso + 1;\n  }\n  const r = soma % 11;\n  return r < 2 ? 0 : 11 - r;\n}\n\n// Valida a entrada do formulario. Retorna {nf, serie, chave} ou {erro}.\n// Apenas digitos seguem para o SQL (protecao contra SQL injection).\nfunction validarEntrada(nfIn, serieIn, chaveIn) {\n  const chaveTxt = String(chaveIn ?? '').trim();\n  if (chaveTxt) {\n    const chave = so(chaveTxt);\n    if (chave.length !== 44) return { erro: 'A chave de acesso deve ter 44 dígitos.' };\n    if (dvChave(chave.slice(0, 43)) !== Number(chave[43])) {\n      return { erro: 'Chave de acesso inválida: o dígito verificador não confere.' };\n    }\n    // Layout da chave: serie nas posicoes 23-25, numero da NF nas 26-34\n    return { nf: chave.slice(25, 34), serie: normSerie(chave.slice(22, 25)), chave };\n  }\n  const nfTxt = String(nfIn ?? '').trim();\n  const serieTxt = String(serieIn ?? '').trim();\n  if (!nfTxt || !serieTxt) return { erro: 'Informe a nota fiscal e a série, ou a chave de acesso.' };\n  if (!/^\\d{1,9}$/.test(nfTxt)) return { erro: 'A nota fiscal deve conter apenas números (até 9 dígitos).' };\n  if (!/^\\d{1,3}$/.test(serieTxt)) return { erro: 'A série deve conter apenas números (até 3 dígitos).' };\n  return { nf: nfTxt.padStart(9, '0'), serie: normSerie(serieTxt), chave: '' };\n}\n\n// ============================================================\n// VALIDAR CADASTRO\n// Torre de Controle Importados - SUL x RIO\n// ============================================================\nconst f = $input.first().json;\nconst v = validarEntrada(f['Nota fiscal'], f['Série'], f['Chave de acesso (NF-e)']);\n\nif (v.erro) {\n  return [{ json: { _erro: v.erro, chaves: '', nfs: '' } }];\n}\n\nreturn [{\n  json: {\n    _erro: '',\n    nf: v.nf,\n    serie: v.serie,\n    chave: v.chave,\n    carro: txt(f['Carro']),\n    // Parametros da consulta SQL (somente digitos e hifen)\n    chaves: v.chave,\n    nfs: v.chave ? '' : `${v.nf}-${v.serie}`\n  }\n}];\n"
+      },
+      "id": "d3e5f431-f761-44d4-bf5e-2e27f0ee1321",
+      "name": "Validar cadastro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SET NOCOUNT ON;\n-- ============================================================\n-- CONSULTA CONSOLIDADA - TORRE DE CONTROLE IMPORTADOS SUL x RIO\n-- Faturamento + eventos SUL + entrada fiscal, em uma unica consulta.\n-- Parametros montados no n8n contendo APENAS digitos, virgula e hifen\n-- (validados no node anterior). Requer STRING_SPLIT (compatibilidade 130+).\n-- ============================================================\nDECLARE @CHAVES VARCHAR(MAX) = '{{ $json.chaves }}';\nDECLARE @NFS    VARCHAR(MAX) = '{{ $json.nfs }}';\n\n;WITH ALVO_CHAVE AS (\n    SELECT DISTINCT CAST(value AS VARCHAR(44)) AS CHAVE_NFE\n    FROM STRING_SPLIT(@CHAVES, ',')\n    WHERE LEN(value) = 44\n), ALVO_NF AS (\n    SELECT DISTINCT\n        CAST(LEFT(value, CHARINDEX('-', value) - 1) AS VARCHAR(20)) AS NF_SAIDA,\n        CAST(SUBSTRING(value, CHARINDEX('-', value) + 1, 10) AS VARCHAR(10)) AS SERIE_NF\n    FROM STRING_SPLIT(@NFS, ',')\n    WHERE CHARINDEX('-', value) > 1\n), NF AS (\n    SELECT A.FILIAL, A.NF_SAIDA, A.SERIE_NF, A.CHAVE_NFE, A.NOME_CLIFOR\n    FROM FATURAMENTO A\n    INNER JOIN ALVO_CHAVE C ON C.CHAVE_NFE = A.CHAVE_NFE\n\n    UNION\n\n    SELECT A.FILIAL, A.NF_SAIDA, A.SERIE_NF, A.CHAVE_NFE, A.NOME_CLIFOR\n    FROM FATURAMENTO A\n    INNER JOIN ALVO_NF N\n        ON N.NF_SAIDA = A.NF_SAIDA\n       AND N.SERIE_NF = A.SERIE_NF\n    WHERE A.CHAVE_NFE IS NOT NULL\n), ITENS AS (\n    SELECT\n        FP.FILIAL, FP.NF_SAIDA, FP.SERIE_NF,\n        SUM(FP.QTDE)  AS QUANTIDADE,\n        SUM(FP.VALOR) AS VALOR,\n        COUNT(DISTINCT LTRIM(RTRIM(LR.DESC_REDE_LOJAS))) AS TOTAL_MARCAS,\n        MAX(LTRIM(RTRIM(LR.DESC_REDE_LOJAS)))            AS MARCA,\n        -- Regra: uma NF possui um unico produto (podendo dividir em cores)\n        COUNT(DISTINCT LTRIM(RTRIM(FP.PRODUTO)))         AS TOTAL_PRODUTOS,\n        MAX(LTRIM(RTRIM(FP.PRODUTO)))                    AS REFERENCIA,\n        MAX(LTRIM(RTRIM(P.DESC_PRODUTO)))                AS DESCRICAO_MATERIAL\n    FROM FATURAMENTO_PROD FP\n    INNER JOIN NF\n        ON NF.FILIAL = FP.FILIAL\n       AND NF.NF_SAIDA = FP.NF_SAIDA\n       AND NF.SERIE_NF = FP.SERIE_NF\n    LEFT JOIN PRODUTOS P    ON P.PRODUTO = FP.PRODUTO\n    LEFT JOIN LOJAS_REDE LR ON LR.REDE_LOJAS = P.REDE_LOJAS\n    GROUP BY FP.FILIAL, FP.NF_SAIDA, FP.SERIE_NF\n), AG AS (\n    SELECT\n        R.CHAVE_NFE, R.DATA_HORA_AGENDAMENTO,\n        R.DATA_INICIO_RECEBIMENTO, R.DATA_FIM_RECEBIMENTO,\n        ROW_NUMBER() OVER (\n            PARTITION BY R.CHAVE_NFE\n            ORDER BY R.DATA_HORA_AGENDAMENTO DESC,\n                     R.DATA_FIM_RECEBIMENTO DESC,\n                     R.DATA_INICIO_RECEBIMENTO DESC\n        ) AS RN\n    FROM LL_RECEBIMENTO_AGENDADO R\n    INNER JOIN (SELECT DISTINCT CHAVE_NFE FROM NF) K ON K.CHAVE_NFE = R.CHAVE_NFE\n), EMB AS (\n    SELECT\n        I.CHAVE_NFE, C.ROMANEIO, C.TRANSPORTADORA, C.PLACA, C.MOTORISTA, C.DATA_EMBARQUE,\n        ROW_NUMBER() OVER (\n            PARTITION BY I.CHAVE_NFE\n            ORDER BY CASE WHEN C.DATA_EMBARQUE IS NOT NULL THEN 0 ELSE 1 END,\n                     C.DATA_EMBARQUE DESC,\n                     C.DATA_HORA_CRIACAO DESC,\n                     C.ROMANEIO DESC\n        ) AS RN\n    FROM SS_ROMANEIOS_CARGA_ITEM I\n    INNER JOIN SS_ROMANEIOS_CARGA C ON C.ROMANEIO = I.ROMANEIO\n    INNER JOIN (SELECT DISTINCT CHAVE_NFE FROM NF) K ON K.CHAVE_NFE = I.CHAVE_NFE\n    WHERE LTRIM(RTRIM(C.TIPO_ROMANEIO)) = 'SUL X RJ (IMPORTADO)'\n), ENT AS (\n    SELECT\n        E.CHAVE_NFE, E.DATA_DIGITACAO,\n        ROW_NUMBER() OVER (\n            PARTITION BY E.CHAVE_NFE\n            ORDER BY E.DATA_DIGITACAO DESC, E.NUMERO_ENTRADA DESC\n        ) AS RN\n    FROM ENTRADAS E\n    INNER JOIN (SELECT DISTINCT CHAVE_NFE FROM NF) K ON K.CHAVE_NFE = E.CHAVE_NFE\n    WHERE ISNULL(E.NOTA_CANCELADA, 0) = 0\n      AND E.DATA_DIGITACAO IS NOT NULL\n)\nSELECT\n    NF.CHAVE_NFE,\n    LTRIM(RTRIM(NF.NF_SAIDA)) AS NF_SAIDA,\n    LTRIM(RTRIM(NF.SERIE_NF)) AS SERIE_NF,\n    LTRIM(RTRIM(NF.FILIAL))   AS FILIAL,\n\n    CASE\n        WHEN LTRIM(RTRIM(NF.NOME_CLIFOR)) = 'CONTROLE QUALIDADE ATAC'   THEN 'ATACADO'\n        WHEN LTRIM(RTRIM(NF.NOME_CLIFOR)) = 'CONTROLE QUALIDADE VAREJO' THEN 'VAREJO'\n        ELSE LTRIM(RTRIM(NF.NOME_CLIFOR))\n    END AS CANAL,\n\n    CASE WHEN I.TOTAL_MARCAS > 1   THEN 'MULTIMARCAS' ELSE I.MARCA END AS MARCA,\n    CASE WHEN I.TOTAL_PRODUTOS > 1 THEN 'MÚLTIPLAS' ELSE I.REFERENCIA END AS REFERENCIA,\n    CASE WHEN I.TOTAL_PRODUTOS > 1 THEN 'MÚLTIPLAS' ELSE I.DESCRICAO_MATERIAL END AS DESCRICAO_MATERIAL,\n    I.QUANTIDADE,\n    I.VALOR,\n\n    -- Datas em ISO (yyyy-mm-dd): interpretadas corretamente pelo Sheets em qualquer localidade\n    CONVERT(VARCHAR(10), AG.DATA_HORA_AGENDAMENTO, 23)   AS DATA_AGENDAMENTO,\n    CONVERT(VARCHAR(10), AG.DATA_INICIO_RECEBIMENTO, 23) AS INICIO_CONFERENCIA_SUL,\n    CONVERT(VARCHAR(10), AG.DATA_FIM_RECEBIMENTO, 23)    AS FIM_CONFERENCIA_SUL,\n\n    CAST(EMB.ROMANEIO AS VARCHAR(30))   AS ROMANEIO,\n    LTRIM(RTRIM(EMB.TRANSPORTADORA))    AS TRANSPORTADORA,\n    LTRIM(RTRIM(EMB.PLACA))             AS PLACA,\n    LTRIM(RTRIM(EMB.MOTORISTA))         AS MOTORISTA,\n    CONVERT(VARCHAR(10), EMB.DATA_EMBARQUE, 23) AS DATA_EMBARQUE,\n    CONVERT(VARCHAR(10), DATEADD(DAY, 2, CAST(EMB.DATA_EMBARQUE AS DATE)), 23) AS PREVISAO_CHEGADA,\n\n    CONVERT(VARCHAR(10), ENT.DATA_DIGITACAO, 23) AS DATA_ENTRADA_FISCAL\nFROM NF\nLEFT JOIN ITENS I\n    ON I.FILIAL = NF.FILIAL\n   AND I.NF_SAIDA = NF.NF_SAIDA\n   AND I.SERIE_NF = NF.SERIE_NF\nLEFT JOIN AG  ON AG.CHAVE_NFE  = NF.CHAVE_NFE AND AG.RN = 1\nLEFT JOIN EMB ON EMB.CHAVE_NFE = NF.CHAVE_NFE AND EMB.RN = 1\nLEFT JOIN ENT ON ENT.CHAVE_NFE = NF.CHAVE_NFE AND ENT.RN = 1;\n"
+      },
+      "id": "716c73e4-8525-4751-b2d1-2147e034a374",
+      "name": "Consultar NF (cadastro)",
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        360,
+        0
+      ],
+      "credentials": {
+        "microsoftSql": {
+          "id": "JxEAFpnayhrOYRpo",
+          "name": "sql_serve_somalog"
+        }
+      },
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "27a9c59f-30cf-49a7-b266-dfca453aaa3c",
+      "name": "Ler planilha (cadastro)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        600,
+        0
+      ],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------- utilitarios comuns ----------\nconst txt = v => String(v ?? '').trim().replace(/^'/, '');\nconst so = v => String(v ?? '').replace(/\\D/g, '');\n// Prefixo ' faz o Google Sheets gravar como texto\n// (preserva zeros a esquerda, 44 digitos da chave e referencias como 27.00020)\nconst T = v => \"'\" + txt(v);\nconst agoraISO = () => $now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd HH:mm:ss');\nconst isoParaBR = iso => {\n  const m = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(txt(iso));\n  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';\n};\nconst normSerie = s => (so(s) ? String(Number(so(s))) : '');\nconst identificacao = (nf, serie) => `${so(nf).padStart(9, '0')}-${normSerie(serie)}`;\n\nfunction dvChave(c43) {\n  let peso = 2, soma = 0;\n  for (let i = c43.length - 1; i >= 0; i--) {\n    soma += Number(c43[i]) * peso;\n    peso = peso === 9 ? 2 : peso + 1;\n  }\n  const r = soma % 11;\n  return r < 2 ? 0 : 11 - r;\n}\n\n// Valida a entrada do formulario. Retorna {nf, serie, chave} ou {erro}.\n// Apenas digitos seguem para o SQL (protecao contra SQL injection).\nfunction validarEntrada(nfIn, serieIn, chaveIn) {\n  const chaveTxt = String(chaveIn ?? '').trim();\n  if (chaveTxt) {\n    const chave = so(chaveTxt);\n    if (chave.length !== 44) return { erro: 'A chave de acesso deve ter 44 dígitos.' };\n    if (dvChave(chave.slice(0, 43)) !== Number(chave[43])) {\n      return { erro: 'Chave de acesso inválida: o dígito verificador não confere.' };\n    }\n    // Layout da chave: serie nas posicoes 23-25, numero da NF nas 26-34\n    return { nf: chave.slice(25, 34), serie: normSerie(chave.slice(22, 25)), chave };\n  }\n  const nfTxt = String(nfIn ?? '').trim();\n  const serieTxt = String(serieIn ?? '').trim();\n  if (!nfTxt || !serieTxt) return { erro: 'Informe a nota fiscal e a série, ou a chave de acesso.' };\n  if (!/^\\d{1,9}$/.test(nfTxt)) return { erro: 'A nota fiscal deve conter apenas números (até 9 dígitos).' };\n  if (!/^\\d{1,3}$/.test(serieTxt)) return { erro: 'A série deve conter apenas números (até 3 dígitos).' };\n  return { nf: nfTxt.padStart(9, '0'), serie: normSerie(serieTxt), chave: '' };\n}\n\n// ============================================================\n// MONTAR RESULTADO DO CADASTRO\n// Torre de Controle Importados - SUL x RIO\n// ============================================================\nconst v = $('Validar cadastro').first().json;\nconst falha = msg => [{ json: { _ok: false, _titulo: 'Cadastro não realizado', _mensagem: msg } }];\n\nif (v._erro) return falha(v._erro);\n\nconst sql = $('Consultar NF (cadastro)').all()\n  .map(i => i.json)\n  .filter(d => txt(d.CHAVE_NFE));\n\nconst ref = v.chave ? `chave ${v.chave}` : `NF ${v.nf} série ${v.serie}`;\n\nif (!sql.length) {\n  return falha(`${ref} não localizada no faturamento. Confira os dados ou informe a chave de acesso.`);\n}\nif (sql.length > 1) {\n  return falha(`${ref} existe em mais de uma filial. Informe a chave de acesso para identificar a nota.`);\n}\n\nconst d = sql[0];\nconst ident = identificacao(d.NF_SAIDA, d.SERIE_NF);\n\n// Evita duplicidade na planilha\nconst planilha = $input.all().map(i => i.json);\nconst dup = planilha.find(r =>\n  so(r.CHAVE_NFE) === txt(d.CHAVE_NFE) || txt(r.IDENTIFICACAO) === ident\n);\nif (dup) {\n  return falha(`NF ${ident} já está cadastrada na planilha.`);\n}\n\nconst agora = agoraISO();\n\nconst linha = {\n  IDENTIFICACAO: T(ident),\n  NOTA_FISCAL: T(so(d.NF_SAIDA).padStart(9, '0')),\n  CARRO: v.carro ? T(v.carro) : '',\n  MARCA: txt(d.MARCA),\n  REFERENCIA: T(d.REFERENCIA),\n  DESCRICAO_MATERIAL: T(d.DESCRICAO_MATERIAL),\n  CANAL: txt(d.CANAL),\n  QUANTIDADE: Number(d.QUANTIDADE ?? 0),\n  VALOR: Number(d.VALOR ?? 0),\n  STATUS_INTEGRACAO: 'INTEGRADO',\n  DATA_AGENDAMENTO: txt(d.DATA_AGENDAMENTO),\n  INICIO_CONFERENCIA_SUL: txt(d.INICIO_CONFERENCIA_SUL),\n  FIM_CONFERENCIA_SUL: txt(d.FIM_CONFERENCIA_SUL),\n  DATA_EMBARQUE: txt(d.DATA_EMBARQUE),\n  PREVISAO_CHEGADA: txt(d.PREVISAO_CHEGADA),\n  RECEBIMENTO_RIO: 'Não',\n  DATA_ENTRADA_FISCAL: txt(d.DATA_ENTRADA_FISCAL),\n  ROMANEIO: txt(d.ROMANEIO) ? T(d.ROMANEIO) : '',\n  PLACA: txt(d.PLACA) ? T(d.PLACA) : '',\n  MOTORISTA: txt(d.MOTORISTA) ? T(d.MOTORISTA) : '',\n  SERIE_NF: T(normSerie(d.SERIE_NF)),\n  CHAVE_NFE: T(d.CHAVE_NFE),\n  TRANSPORTADORA: txt(d.TRANSPORTADORA) ? T(d.TRANSPORTADORA) : '',\n  MENSAGEM: '',\n  ULTIMA_ATUALIZACAO: agora\n};\n\nconst qtd = Number(d.QUANTIDADE ?? 0).toLocaleString('pt-BR');\nconst valor = Number(d.VALOR ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });\n\nreturn [{\n  json: {\n    _ok: true,\n    _titulo: `NF ${ident} cadastrada`,\n    _mensagem:\n      `Referência ${txt(d.REFERENCIA)} – ${txt(d.DESCRICAO_MATERIAL)} · ` +\n      `${txt(d.MARCA)} · ${txt(d.CANAL)} · ${qtd} peças · R$ ${valor}. ` +\n      `Os dados operacionais serão atualizados automaticamente a cada hora.`,\n    ...linha\n  }\n}];\n"
+      },
+      "id": "a53726c7-6be5-42c5-aa7f-46f43a772083",
+      "name": "Montar resultado (cadastro)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "5e946719-5e06-49c4-a05f-723179071db1",
+              "leftValue": "={{ $json._ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a0fff179-59a5-40e7-8373-45df0ba47a85",
+      "name": "Cadastro válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED",
+          "handlingExtraData": "ignoreIt"
+        }
+      },
+      "id": "2c518ead-0dc7-41b4-bb8d-e3121dc942fb",
+      "name": "Incluir linha na planilha",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1320,
+        -80
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "={{ $('Montar resultado (cadastro)').first().json._titulo }}",
+        "completionMessage": "={{ $('Montar resultado (cadastro)').first().json._mensagem }}",
+        "options": {}
+      },
+      "id": "f28a7fae-4f7a-4b5c-8b4d-1abb616ca140",
+      "name": "Tela - Cadastro concluído",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        -80
+      ],
+      "webhookId": "1b0d2d74-6c4c-487f-8a42-1f653e83459b"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "={{ $('Montar resultado (cadastro)').first().json._titulo }}",
+        "completionMessage": "={{ $('Montar resultado (cadastro)').first().json._mensagem }}",
+        "options": {}
+      },
+      "id": "f784793d-ecce-4063-b2d1-f71651a055df",
+      "name": "Tela - Cadastro recusado",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        100
+      ],
+      "webhookId": "27ffc55f-2701-4b62-9219-c5fc17dd5d9b"
+    },
+    {
+      "parameters": {
+        "content": "## B — Confirmação de recebimento no CD Rio (formulário)\nLocaliza a NF na planilha e grava RECEBIMENTO_RIO = Sim, data/hora (BRT) e observação de faltas/sobras.",
+        "height": 330,
+        "width": 2000,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        300
+      ],
+      "id": "03fa820f-5362-43f3-b3ae-e9429e241b37",
+      "name": "Nota B"
+    },
+    {
+      "parameters": {
+        "authentication": "basicAuth",
+        "formTitle": "Confirmar recebimento – CD Rio",
+        "formDescription": "Informe a NF e a série (ou a chave) e, se houver, as divergências de faltas/sobras.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Nota fiscal",
+              "placeholder": "Ex.: 000027607"
+            },
+            {
+              "fieldLabel": "Série",
+              "placeholder": "Ex.: 12"
+            },
+            {
+              "fieldLabel": "Chave de acesso (NF-e)",
+              "placeholder": "44 dígitos (opcional: substitui NF e série; aceita leitor de código de barras)"
+            },
+            {
+              "fieldLabel": "Observação do recebimento",
+              "fieldType": "textarea",
+              "placeholder": "Ex.: FALTA 1 M, SOBRA 2 P"
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "5eb40d92-268f-4378-b3eb-33060ab88a7e",
+      "name": "Formulário - Confirmar recebimento Rio",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -120,
+        420
+      ],
+      "webhookId": "57c88670-b182-401f-b54a-dc55b4251bb7"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------- utilitarios comuns ----------\nconst txt = v => String(v ?? '').trim().replace(/^'/, '');\nconst so = v => String(v ?? '').replace(/\\D/g, '');\n// Prefixo ' faz o Google Sheets gravar como texto\n// (preserva zeros a esquerda, 44 digitos da chave e referencias como 27.00020)\nconst T = v => \"'\" + txt(v);\nconst agoraISO = () => $now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd HH:mm:ss');\nconst isoParaBR = iso => {\n  const m = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(txt(iso));\n  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';\n};\nconst normSerie = s => (so(s) ? String(Number(so(s))) : '');\nconst identificacao = (nf, serie) => `${so(nf).padStart(9, '0')}-${normSerie(serie)}`;\n\nfunction dvChave(c43) {\n  let peso = 2, soma = 0;\n  for (let i = c43.length - 1; i >= 0; i--) {\n    soma += Number(c43[i]) * peso;\n    peso = peso === 9 ? 2 : peso + 1;\n  }\n  const r = soma % 11;\n  return r < 2 ? 0 : 11 - r;\n}\n\n// Valida a entrada do formulario. Retorna {nf, serie, chave} ou {erro}.\n// Apenas digitos seguem para o SQL (protecao contra SQL injection).\nfunction validarEntrada(nfIn, serieIn, chaveIn) {\n  const chaveTxt = String(chaveIn ?? '').trim();\n  if (chaveTxt) {\n    const chave = so(chaveTxt);\n    if (chave.length !== 44) return { erro: 'A chave de acesso deve ter 44 dígitos.' };\n    if (dvChave(chave.slice(0, 43)) !== Number(chave[43])) {\n      return { erro: 'Chave de acesso inválida: o dígito verificador não confere.' };\n    }\n    // Layout da chave: serie nas posicoes 23-25, numero da NF nas 26-34\n    return { nf: chave.slice(25, 34), serie: normSerie(chave.slice(22, 25)), chave };\n  }\n  const nfTxt = String(nfIn ?? '').trim();\n  const serieTxt = String(serieIn ?? '').trim();\n  if (!nfTxt || !serieTxt) return { erro: 'Informe a nota fiscal e a série, ou a chave de acesso.' };\n  if (!/^\\d{1,9}$/.test(nfTxt)) return { erro: 'A nota fiscal deve conter apenas números (até 9 dígitos).' };\n  if (!/^\\d{1,3}$/.test(serieTxt)) return { erro: 'A série deve conter apenas números (até 3 dígitos).' };\n  return { nf: nfTxt.padStart(9, '0'), serie: normSerie(serieTxt), chave: '' };\n}\n\n// ============================================================\n// VALIDAR RECEBIMENTO RIO\n// Torre de Controle Importados - SUL x RIO\n// ============================================================\nconst f = $input.first().json;\nconst v = validarEntrada(f['Nota fiscal'], f['Série'], f['Chave de acesso (NF-e)']);\n\nif (v.erro) return [{ json: { _erro: v.erro } }];\n\nreturn [{\n  json: {\n    _erro: '',\n    nf: v.nf,\n    serie: v.serie,\n    chave: v.chave,\n    obs: String(f['Observação do recebimento'] ?? '').trim()\n  }\n}];\n"
+      },
+      "id": "dd0fd1ee-bdd8-412b-84e3-d9e155425210",
+      "name": "Validar recebimento",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "9d7c0673-3bbb-4ba9-87f5-564af235bc68",
+      "name": "Ler planilha (recebimento)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        360,
+        420
+      ],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------- utilitarios comuns ----------\nconst txt = v => String(v ?? '').trim().replace(/^'/, '');\nconst so = v => String(v ?? '').replace(/\\D/g, '');\n// Prefixo ' faz o Google Sheets gravar como texto\n// (preserva zeros a esquerda, 44 digitos da chave e referencias como 27.00020)\nconst T = v => \"'\" + txt(v);\nconst agoraISO = () => $now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd HH:mm:ss');\nconst isoParaBR = iso => {\n  const m = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(txt(iso));\n  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';\n};\nconst normSerie = s => (so(s) ? String(Number(so(s))) : '');\nconst identificacao = (nf, serie) => `${so(nf).padStart(9, '0')}-${normSerie(serie)}`;\n\nfunction dvChave(c43) {\n  let peso = 2, soma = 0;\n  for (let i = c43.length - 1; i >= 0; i--) {\n    soma += Number(c43[i]) * peso;\n    peso = peso === 9 ? 2 : peso + 1;\n  }\n  const r = soma % 11;\n  return r < 2 ? 0 : 11 - r;\n}\n\n// Valida a entrada do formulario. Retorna {nf, serie, chave} ou {erro}.\n// Apenas digitos seguem para o SQL (protecao contra SQL injection).\nfunction validarEntrada(nfIn, serieIn, chaveIn) {\n  const chaveTxt = String(chaveIn ?? '').trim();\n  if (chaveTxt) {\n    const chave = so(chaveTxt);\n    if (chave.length !== 44) return { erro: 'A chave de acesso deve ter 44 dígitos.' };\n    if (dvChave(chave.slice(0, 43)) !== Number(chave[43])) {\n      return { erro: 'Chave de acesso inválida: o dígito verificador não confere.' };\n    }\n    // Layout da chave: serie nas posicoes 23-25, numero da NF nas 26-34\n    return { nf: chave.slice(25, 34), serie: normSerie(chave.slice(22, 25)), chave };\n  }\n  const nfTxt = String(nfIn ?? '').trim();\n  const serieTxt = String(serieIn ?? '').trim();\n  if (!nfTxt || !serieTxt) return { erro: 'Informe a nota fiscal e a série, ou a chave de acesso.' };\n  if (!/^\\d{1,9}$/.test(nfTxt)) return { erro: 'A nota fiscal deve conter apenas números (até 9 dígitos).' };\n  if (!/^\\d{1,3}$/.test(serieTxt)) return { erro: 'A série deve conter apenas números (até 3 dígitos).' };\n  return { nf: nfTxt.padStart(9, '0'), serie: normSerie(serieTxt), chave: '' };\n}\n\n// ============================================================\n// LOCALIZAR NF E PREPARAR RECEBIMENTO\n// Torre de Controle Importados - SUL x RIO\n// ============================================================\nconst v = $('Validar recebimento').first().json;\nconst falha = msg => [{ json: { _ok: false, _titulo: 'Recebimento não registrado', _mensagem: msg } }];\n\nif (v._erro) return falha(v._erro);\n\nconst linhas = $input.all().map(i => i.json).filter(r => txt(r.IDENTIFICACAO));\n\nconst alvo = linhas.filter(r =>\n  (v.chave && so(r.CHAVE_NFE) === v.chave) ||\n  (so(r.NOTA_FISCAL).padStart(9, '0') === v.nf && normSerie(r.SERIE_NF) === v.serie)\n);\n\nconst ref = `NF ${v.nf}-${v.serie}`;\nif (!alvo.length) return falha(`${ref} não encontrada na planilha. Cadastre a nota antes de registrar o recebimento.`);\nif (alvo.length > 1) return falha(`${ref} aparece em mais de uma linha da planilha. Corrija a duplicidade antes de registrar.`);\n\nconst r = alvo[0];\nif (/^SIM$/i.test(txt(r.RECEBIMENTO_RIO)) && txt(r.DATA_RECEBIMENTO_RIO)) {\n  return falha(`${ref}: recebimento já registrado em ${txt(r.DATA_RECEBIMENTO_RIO)}.`);\n}\n\nconst agora = agoraISO();\nconst upd = {\n  IDENTIFICACAO: txt(r.IDENTIFICACAO),\n  RECEBIMENTO_RIO: 'Sim',\n  DATA_RECEBIMENTO_RIO: agora,\n  ULTIMA_ATUALIZACAO: agora\n};\n// Texto livre sempre com prefixo ' (evita formula injetada na planilha)\nif (v.obs) upd.OBSERVACAO_RECEBIMENTO = T(v.obs);\n\nreturn [{\n  json: {\n    _ok: true,\n    _titulo: `Recebimento registrado – ${txt(r.IDENTIFICACAO)}`,\n    _mensagem: `Recebimento no Rio registrado em ${agora.slice(8, 10)}/${agora.slice(5, 7)}/${agora.slice(0, 4)} às ${agora.slice(11, 16)}.` +\n      (v.obs ? ` Observação: ${v.obs}` : ''),\n    ...upd\n  }\n}];\n"
+      },
+      "id": "d4c51ab7-0941-457a-ba3c-b152ef976942",
+      "name": "Localizar NF (recebimento)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "33307fbc-8b5b-4658-96ec-8fe4a00c24ef",
+              "leftValue": "={{ $json._ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c0ca548f-910a-47e3-9c2f-2903b1914807",
+      "name": "Recebimento válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        840,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "IDENTIFICACAO"
+          ],
+          "schema": []
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED",
+          "handlingExtraData": "ignoreIt"
+        }
+      },
+      "id": "bf93e959-953d-4bca-bd45-d178762ebed8",
+      "name": "Gravar recebimento",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1080,
+        340
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "={{ $('Localizar NF (recebimento)').first().json._titulo }}",
+        "completionMessage": "={{ $('Localizar NF (recebimento)').first().json._mensagem }}",
+        "options": {}
+      },
+      "id": "6ae82bd6-e7b7-4efc-b3cc-b300881dfa9b",
+      "name": "Tela - Recebimento registrado",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        340
+      ],
+      "webhookId": "e1903b81-eb5d-44b9-9247-24a3e4f1d25c"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "={{ $('Localizar NF (recebimento)').first().json._titulo }}",
+        "completionMessage": "={{ $('Localizar NF (recebimento)').first().json._mensagem }}",
+        "options": {}
+      },
+      "id": "d96fe22b-8d27-4619-85bf-ec389af6ab8a",
+      "name": "Tela - Recebimento recusado",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        520
+      ],
+      "webhookId": "0529dbac-4ba4-4d73-b828-c758c6a46b50"
+    },
+    {
+      "parameters": {
+        "content": "## C — Atualização horária (07h–19h, seg–sáb)\nUma leitura da planilha, **uma** consulta SQL para todas as NFs em aberto e gravação apenas do que mudou: faturamento (se vazio), eventos SUL, embarque, entrada fiscal e data de recebimento marcado na planilha.",
+        "height": 300,
+        "width": 2000,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        720
+      ],
+      "id": "b045367a-fcef-4e14-88b4-69553bb06407",
+      "name": "Nota C"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7-19 * * 1-6"
+            }
+          ]
+        }
+      },
+      "id": "a8668b73-a180-4ff0-8c07-4ba24b9ec5e5",
+      "name": "A cada hora (07h-19h, seg-sáb)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -120,
+        840
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "b88745cc-9230-438e-b89e-b0c795c03e81",
+      "name": "Ler planilha (horário)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        120,
+        840
+      ],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------- utilitarios comuns ----------\nconst txt = v => String(v ?? '').trim().replace(/^'/, '');\nconst so = v => String(v ?? '').replace(/\\D/g, '');\n// Prefixo ' faz o Google Sheets gravar como texto\n// (preserva zeros a esquerda, 44 digitos da chave e referencias como 27.00020)\nconst T = v => \"'\" + txt(v);\nconst agoraISO = () => $now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd HH:mm:ss');\nconst isoParaBR = iso => {\n  const m = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(txt(iso));\n  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';\n};\nconst normSerie = s => (so(s) ? String(Number(so(s))) : '');\nconst identificacao = (nf, serie) => `${so(nf).padStart(9, '0')}-${normSerie(serie)}`;\n\nfunction dvChave(c43) {\n  let peso = 2, soma = 0;\n  for (let i = c43.length - 1; i >= 0; i--) {\n    soma += Number(c43[i]) * peso;\n    peso = peso === 9 ? 2 : peso + 1;\n  }\n  const r = soma % 11;\n  return r < 2 ? 0 : 11 - r;\n}\n\n// Valida a entrada do formulario. Retorna {nf, serie, chave} ou {erro}.\n// Apenas digitos seguem para o SQL (protecao contra SQL injection).\nfunction validarEntrada(nfIn, serieIn, chaveIn) {\n  const chaveTxt = String(chaveIn ?? '').trim();\n  if (chaveTxt) {\n    const chave = so(chaveTxt);\n    if (chave.length !== 44) return { erro: 'A chave de acesso deve ter 44 dígitos.' };\n    if (dvChave(chave.slice(0, 43)) !== Number(chave[43])) {\n      return { erro: 'Chave de acesso inválida: o dígito verificador não confere.' };\n    }\n    // Layout da chave: serie nas posicoes 23-25, numero da NF nas 26-34\n    return { nf: chave.slice(25, 34), serie: normSerie(chave.slice(22, 25)), chave };\n  }\n  const nfTxt = String(nfIn ?? '').trim();\n  const serieTxt = String(serieIn ?? '').trim();\n  if (!nfTxt || !serieTxt) return { erro: 'Informe a nota fiscal e a série, ou a chave de acesso.' };\n  if (!/^\\d{1,9}$/.test(nfTxt)) return { erro: 'A nota fiscal deve conter apenas números (até 9 dígitos).' };\n  if (!/^\\d{1,3}$/.test(serieTxt)) return { erro: 'A série deve conter apenas números (até 3 dígitos).' };\n  return { nf: nfTxt.padStart(9, '0'), serie: normSerie(serieTxt), chave: '' };\n}\n\n// ============================================================\n// PREPARAR CONSULTA HORARIA\n// Torre de Controle Importados - SUL x RIO\n// ============================================================\n// Monta UMA consulta para todas as notas em aberto.\n// Linhas concluidas (integradas, com referencia, embarque e\n// entrada fiscal) nao sao reconsultadas.\nconst linhas = $input.all().map(i => i.json).filter(r => txt(r.IDENTIFICACAO));\n\nconst chaves = new Set();\nconst nfs = new Set();\n\nfor (const r of linhas) {\n  const status = txt(r.STATUS_INTEGRACAO).toUpperCase();\n  const concluida =\n    status === 'INTEGRADO' &&\n    txt(r.REFERENCIA) && txt(r.DATA_EMBARQUE) && txt(r.DATA_ENTRADA_FISCAL);\n  if (concluida) continue;\n\n  const chave = so(r.CHAVE_NFE);\n  if (chave.length === 44) {\n    chaves.add(chave);\n    continue;\n  }\n\n  const nf = so(r.NOTA_FISCAL);\n  const serie = so(r.SERIE_NF);\n  if (nf && nf.length <= 9 && serie && serie.length <= 3) {\n    nfs.add(identificacao(nf, serie));\n  }\n}\n\nreturn [{\n  json: {\n    chaves: [...chaves].join(','),\n    nfs: [...nfs].join(','),\n    total_consulta: chaves.size + nfs.size\n  }\n}];\n"
+      },
+      "id": "537c3e75-5433-4d63-bd8a-7d2be2603008",
+      "name": "Preparar consulta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        840
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SET NOCOUNT ON;\n-- ============================================================\n-- CONSULTA CONSOLIDADA - TORRE DE CONTROLE IMPORTADOS SUL x RIO\n-- Faturamento + eventos SUL + entrada fiscal, em uma unica consulta.\n-- Parametros montados no n8n contendo APENAS digitos, virgula e hifen\n-- (validados no node anterior). Requer STRING_SPLIT (compatibilidade 130+).\n-- ============================================================\nDECLARE @CHAVES VARCHAR(MAX) = '{{ $json.chaves }}';\nDECLARE @NFS    VARCHAR(MAX) = '{{ $json.nfs }}';\n\n;WITH ALVO_CHAVE AS (\n    SELECT DISTINCT CAST(value AS VARCHAR(44)) AS CHAVE_NFE\n    FROM STRING_SPLIT(@CHAVES, ',')\n    WHERE LEN(value) = 44\n), ALVO_NF AS (\n    SELECT DISTINCT\n        CAST(LEFT(value, CHARINDEX('-', value) - 1) AS VARCHAR(20)) AS NF_SAIDA,\n        CAST(SUBSTRING(value, CHARINDEX('-', value) + 1, 10) AS VARCHAR(10)) AS SERIE_NF\n    FROM STRING_SPLIT(@NFS, ',')\n    WHERE CHARINDEX('-', value) > 1\n), NF AS (\n    SELECT A.FILIAL, A.NF_SAIDA, A.SERIE_NF, A.CHAVE_NFE, A.NOME_CLIFOR\n    FROM FATURAMENTO A\n    INNER JOIN ALVO_CHAVE C ON C.CHAVE_NFE = A.CHAVE_NFE\n\n    UNION\n\n    SELECT A.FILIAL, A.NF_SAIDA, A.SERIE_NF, A.CHAVE_NFE, A.NOME_CLIFOR\n    FROM FATURAMENTO A\n    INNER JOIN ALVO_NF N\n        ON N.NF_SAIDA = A.NF_SAIDA\n       AND N.SERIE_NF = A.SERIE_NF\n    WHERE A.CHAVE_NFE IS NOT NULL\n), ITENS AS (\n    SELECT\n        FP.FILIAL, FP.NF_SAIDA, FP.SERIE_NF,\n        SUM(FP.QTDE)  AS QUANTIDADE,\n        SUM(FP.VALOR) AS VALOR,\n        COUNT(DISTINCT LTRIM(RTRIM(LR.DESC_REDE_LOJAS))) AS TOTAL_MARCAS,\n        MAX(LTRIM(RTRIM(LR.DESC_REDE_LOJAS)))            AS MARCA,\n        -- Regra: uma NF possui um unico produto (podendo dividir em cores)\n        COUNT(DISTINCT LTRIM(RTRIM(FP.PRODUTO)))         AS TOTAL_PRODUTOS,\n        MAX(LTRIM(RTRIM(FP.PRODUTO)))                    AS REFERENCIA,\n        MAX(LTRIM(RTRIM(P.DESC_PRODUTO)))                AS DESCRICAO_MATERIAL\n    FROM FATURAMENTO_PROD FP\n    INNER JOIN NF\n        ON NF.FILIAL = FP.FILIAL\n       AND NF.NF_SAIDA = FP.NF_SAIDA\n       AND NF.SERIE_NF = FP.SERIE_NF\n    LEFT JOIN PRODUTOS P    ON P.PRODUTO = FP.PRODUTO\n    LEFT JOIN LOJAS_REDE LR ON LR.REDE_LOJAS = P.REDE_LOJAS\n    GROUP BY FP.FILIAL, FP.NF_SAIDA, FP.SERIE_NF\n), AG AS (\n    SELECT\n        R.CHAVE_NFE, R.DATA_HORA_AGENDAMENTO,\n        R.DATA_INICIO_RECEBIMENTO, R.DATA_FIM_RECEBIMENTO,\n        ROW_NUMBER() OVER (\n            PARTITION BY R.CHAVE_NFE\n            ORDER BY R.DATA_HORA_AGENDAMENTO DESC,\n                     R.DATA_FIM_RECEBIMENTO DESC,\n                     R.DATA_INICIO_RECEBIMENTO DESC\n        ) AS RN\n    FROM LL_RECEBIMENTO_AGENDADO R\n    INNER JOIN (SELECT DISTINCT CHAVE_NFE FROM NF) K ON K.CHAVE_NFE = R.CHAVE_NFE\n), EMB AS (\n    SELECT\n        I.CHAVE_NFE, C.ROMANEIO, C.TRANSPORTADORA, C.PLACA, C.MOTORISTA, C.DATA_EMBARQUE,\n        ROW_NUMBER() OVER (\n            PARTITION BY I.CHAVE_NFE\n            ORDER BY CASE WHEN C.DATA_EMBARQUE IS NOT NULL THEN 0 ELSE 1 END,\n                     C.DATA_EMBARQUE DESC,\n                     C.DATA_HORA_CRIACAO DESC,\n                     C.ROMANEIO DESC\n        ) AS RN\n    FROM SS_ROMANEIOS_CARGA_ITEM I\n    INNER JOIN SS_ROMANEIOS_CARGA C ON C.ROMANEIO = I.ROMANEIO\n    INNER JOIN (SELECT DISTINCT CHAVE_NFE FROM NF) K ON K.CHAVE_NFE = I.CHAVE_NFE\n    WHERE LTRIM(RTRIM(C.TIPO_ROMANEIO)) = 'SUL X RJ (IMPORTADO)'\n), ENT AS (\n    SELECT\n        E.CHAVE_NFE, E.DATA_DIGITACAO,\n        ROW_NUMBER() OVER (\n            PARTITION BY E.CHAVE_NFE\n            ORDER BY E.DATA_DIGITACAO DESC, E.NUMERO_ENTRADA DESC\n        ) AS RN\n    FROM ENTRADAS E\n    INNER JOIN (SELECT DISTINCT CHAVE_NFE FROM NF) K ON K.CHAVE_NFE = E.CHAVE_NFE\n    WHERE ISNULL(E.NOTA_CANCELADA, 0) = 0\n      AND E.DATA_DIGITACAO IS NOT NULL\n)\nSELECT\n    NF.CHAVE_NFE,\n    LTRIM(RTRIM(NF.NF_SAIDA)) AS NF_SAIDA,\n    LTRIM(RTRIM(NF.SERIE_NF)) AS SERIE_NF,\n    LTRIM(RTRIM(NF.FILIAL))   AS FILIAL,\n\n    CASE\n        WHEN LTRIM(RTRIM(NF.NOME_CLIFOR)) = 'CONTROLE QUALIDADE ATAC'   THEN 'ATACADO'\n        WHEN LTRIM(RTRIM(NF.NOME_CLIFOR)) = 'CONTROLE QUALIDADE VAREJO' THEN 'VAREJO'\n        ELSE LTRIM(RTRIM(NF.NOME_CLIFOR))\n    END AS CANAL,\n\n    CASE WHEN I.TOTAL_MARCAS > 1   THEN 'MULTIMARCAS' ELSE I.MARCA END AS MARCA,\n    CASE WHEN I.TOTAL_PRODUTOS > 1 THEN 'MÚLTIPLAS' ELSE I.REFERENCIA END AS REFERENCIA,\n    CASE WHEN I.TOTAL_PRODUTOS > 1 THEN 'MÚLTIPLAS' ELSE I.DESCRICAO_MATERIAL END AS DESCRICAO_MATERIAL,\n    I.QUANTIDADE,\n    I.VALOR,\n\n    -- Datas em ISO (yyyy-mm-dd): interpretadas corretamente pelo Sheets em qualquer localidade\n    CONVERT(VARCHAR(10), AG.DATA_HORA_AGENDAMENTO, 23)   AS DATA_AGENDAMENTO,\n    CONVERT(VARCHAR(10), AG.DATA_INICIO_RECEBIMENTO, 23) AS INICIO_CONFERENCIA_SUL,\n    CONVERT(VARCHAR(10), AG.DATA_FIM_RECEBIMENTO, 23)    AS FIM_CONFERENCIA_SUL,\n\n    CAST(EMB.ROMANEIO AS VARCHAR(30))   AS ROMANEIO,\n    LTRIM(RTRIM(EMB.TRANSPORTADORA))    AS TRANSPORTADORA,\n    LTRIM(RTRIM(EMB.PLACA))             AS PLACA,\n    LTRIM(RTRIM(EMB.MOTORISTA))         AS MOTORISTA,\n    CONVERT(VARCHAR(10), EMB.DATA_EMBARQUE, 23) AS DATA_EMBARQUE,\n    CONVERT(VARCHAR(10), DATEADD(DAY, 2, CAST(EMB.DATA_EMBARQUE AS DATE)), 23) AS PREVISAO_CHEGADA,\n\n    CONVERT(VARCHAR(10), ENT.DATA_DIGITACAO, 23) AS DATA_ENTRADA_FISCAL\nFROM NF\nLEFT JOIN ITENS I\n    ON I.FILIAL = NF.FILIAL\n   AND I.NF_SAIDA = NF.NF_SAIDA\n   AND I.SERIE_NF = NF.SERIE_NF\nLEFT JOIN AG  ON AG.CHAVE_NFE  = NF.CHAVE_NFE AND AG.RN = 1\nLEFT JOIN EMB ON EMB.CHAVE_NFE = NF.CHAVE_NFE AND EMB.RN = 1\nLEFT JOIN ENT ON ENT.CHAVE_NFE = NF.CHAVE_NFE AND ENT.RN = 1;\n"
+      },
+      "id": "3414518d-fc10-4a11-ba95-fe1a9a88e937",
+      "name": "Consultar eventos (horário)",
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        600,
+        840
+      ],
+      "credentials": {
+        "microsoftSql": {
+          "id": "JxEAFpnayhrOYRpo",
+          "name": "sql_serve_somalog"
+        }
+      },
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------- utilitarios comuns ----------\nconst txt = v => String(v ?? '').trim().replace(/^'/, '');\nconst so = v => String(v ?? '').replace(/\\D/g, '');\n// Prefixo ' faz o Google Sheets gravar como texto\n// (preserva zeros a esquerda, 44 digitos da chave e referencias como 27.00020)\nconst T = v => \"'\" + txt(v);\nconst agoraISO = () => $now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd HH:mm:ss');\nconst isoParaBR = iso => {\n  const m = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(txt(iso));\n  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';\n};\nconst normSerie = s => (so(s) ? String(Number(so(s))) : '');\nconst identificacao = (nf, serie) => `${so(nf).padStart(9, '0')}-${normSerie(serie)}`;\n\nfunction dvChave(c43) {\n  let peso = 2, soma = 0;\n  for (let i = c43.length - 1; i >= 0; i--) {\n    soma += Number(c43[i]) * peso;\n    peso = peso === 9 ? 2 : peso + 1;\n  }\n  const r = soma % 11;\n  return r < 2 ? 0 : 11 - r;\n}\n\n// Valida a entrada do formulario. Retorna {nf, serie, chave} ou {erro}.\n// Apenas digitos seguem para o SQL (protecao contra SQL injection).\nfunction validarEntrada(nfIn, serieIn, chaveIn) {\n  const chaveTxt = String(chaveIn ?? '').trim();\n  if (chaveTxt) {\n    const chave = so(chaveTxt);\n    if (chave.length !== 44) return { erro: 'A chave de acesso deve ter 44 dígitos.' };\n    if (dvChave(chave.slice(0, 43)) !== Number(chave[43])) {\n      return { erro: 'Chave de acesso inválida: o dígito verificador não confere.' };\n    }\n    // Layout da chave: serie nas posicoes 23-25, numero da NF nas 26-34\n    return { nf: chave.slice(25, 34), serie: normSerie(chave.slice(22, 25)), chave };\n  }\n  const nfTxt = String(nfIn ?? '').trim();\n  const serieTxt = String(serieIn ?? '').trim();\n  if (!nfTxt || !serieTxt) return { erro: 'Informe a nota fiscal e a série, ou a chave de acesso.' };\n  if (!/^\\d{1,9}$/.test(nfTxt)) return { erro: 'A nota fiscal deve conter apenas números (até 9 dígitos).' };\n  if (!/^\\d{1,3}$/.test(serieTxt)) return { erro: 'A série deve conter apenas números (até 3 dígitos).' };\n  return { nf: nfTxt.padStart(9, '0'), serie: normSerie(serieTxt), chave: '' };\n}\n\n// ============================================================\n// COMPARAR SQL x PLANILHA E PREPARAR ATUALIZACOES\n// Torre de Controle Importados - SUL x RIO\n// ============================================================\n// Regras:\n// - Dados do faturamento: gravados apenas se a celula estiver vazia.\n// - Dados operacionais: gravados quando mudam; nunca apaga com vazio.\n// - RECEBIMENTO_RIO = Sim sem data: grava a data/hora atual (BRT).\n// - Somente linhas com alteracao seguem para o Google Sheets.\nconst linhas = $('Ler planilha (horário)').all().map(i => i.json);\nconst consulta = $('Preparar consulta').first().json;\nconst sql = $input.all().map(i => i.json).filter(d => txt(d.CHAVE_NFE));\n\nconst porChave = new Map();\nconst porNf = new Map();\nfor (const d of sql) {\n  porChave.set(txt(d.CHAVE_NFE), d);\n  const k = identificacao(d.NF_SAIDA, d.SERIE_NF);\n  if (!porNf.has(k)) porNf.set(k, []);\n  porNf.get(k).push(d);\n}\n\nconst consultadas = new Set(\n  [...String(consulta.chaves || '').split(','), ...String(consulta.nfs || '').split(',')].filter(Boolean)\n);\n\n// IDENTIFICACAO duplicada: nao atualiza (chave de atualizacao ambigua)\nconst contagem = new Map();\nfor (const r of linhas) {\n  const id = txt(r.IDENTIFICACAO);\n  if (id) contagem.set(id, (contagem.get(id) || 0) + 1);\n}\n\nconst DATAS = ['DATA_AGENDAMENTO', 'INICIO_CONFERENCIA_SUL', 'FIM_CONFERENCIA_SUL',\n               'DATA_EMBARQUE', 'PREVISAO_CHEGADA', 'DATA_ENTRADA_FISCAL'];\nconst agora = agoraISO();\nconst out = [];\n\nfor (const r of linhas) {\n  const id = txt(r.IDENTIFICACAO);\n  if (!id || contagem.get(id) > 1) continue;\n\n  const upd = {};\n  const setTexto = (campo, valor, comoTexto = false, soSeVazio = false) => {\n    const novo = txt(valor);\n    if (!novo) return;\n    const atual = txt(r[campo]);\n    if (soSeVazio && atual) return;\n    if (novo !== atual) upd[campo] = comoTexto ? T(novo) : novo;\n  };\n  const setNumero = (campo, valor) => {\n    if (valor === null || valor === undefined || valor === '') return;\n    if (txt(r[campo])) return;\n    upd[campo] = Number(valor);\n  };\n  const setData = (campo, iso) => {\n    const br = isoParaBR(iso);\n    if (!br) return;\n    if (br !== txt(r[campo])) upd[campo] = txt(iso);\n  };\n\n  const status = txt(r.STATUS_INTEGRACAO).toUpperCase();\n  const chave = so(r.CHAVE_NFE);\n  let d = null;\n  let busca = '';\n\n  if (chave.length === 44) {\n    busca = chave;\n    d = porChave.get(chave) || null;\n  } else if (so(r.NOTA_FISCAL) && so(r.SERIE_NF)) {\n    busca = identificacao(r.NOTA_FISCAL, r.SERIE_NF);\n    const lista = porNf.get(busca) || [];\n    if (lista.length > 1) {\n      setTexto('MENSAGEM', 'NF encontrada em mais de uma filial. Informe a CHAVE_NFE na linha.');\n    } else {\n      d = lista[0] || null;\n    }\n  }\n\n  if (d) {\n    // Faturamento: somente preenche o que estiver vazio\n    setTexto('CHAVE_NFE', d.CHAVE_NFE, true, true);\n    setTexto('NOTA_FISCAL', so(d.NF_SAIDA).padStart(9, '0'), true, true);\n    setTexto('SERIE_NF', normSerie(d.SERIE_NF), true, true);\n    setTexto('MARCA', d.MARCA, false, true);\n    setTexto('REFERENCIA', d.REFERENCIA, true, true);\n    setTexto('DESCRICAO_MATERIAL', d.DESCRICAO_MATERIAL, true, true);\n    setTexto('CANAL', d.CANAL, false, true);\n    setNumero('QUANTIDADE', d.QUANTIDADE);\n    setNumero('VALOR', d.VALOR);\n    if (status !== 'INTEGRADO') upd.STATUS_INTEGRACAO = 'INTEGRADO';\n    if (txt(r.MENSAGEM)) upd.MENSAGEM = '';\n\n    // Operacional SUL e fiscal: atualiza quando muda\n    for (const c of DATAS) setData(c, d[c]);\n    setTexto('ROMANEIO', d.ROMANEIO, true);\n    setTexto('PLACA', d.PLACA, true);\n    setTexto('MOTORISTA', d.MOTORISTA, true);\n    setTexto('TRANSPORTADORA', d.TRANSPORTADORA, true);\n  } else if (busca && consultadas.has(busca) && status !== 'INTEGRADO' && !upd.MENSAGEM) {\n    if (status !== 'NÃO LOCALIZADO') upd.STATUS_INTEGRACAO = 'NÃO LOCALIZADO';\n    setTexto('MENSAGEM', 'NF não localizada no faturamento. Verifique número e série.');\n  }\n\n  // Recebimento marcado direto na planilha\n  if (/^SIM$/i.test(txt(r.RECEBIMENTO_RIO)) && !txt(r.DATA_RECEBIMENTO_RIO)) {\n    upd.DATA_RECEBIMENTO_RIO = agora;\n  }\n\n  if (Object.keys(upd).length) {\n    upd.ULTIMA_ATUALIZACAO = agora;\n    out.push({ json: { IDENTIFICACAO: id, ...upd } });\n  }\n}\n\nreturn out;\n"
+      },
+      "id": "ba56511e-6c87-4694-becc-16d4e6baa1aa",
+      "name": "Comparar e preparar atualizações",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        840
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "IDENTIFICACAO"
+          ],
+          "schema": []
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED",
+          "handlingExtraData": "ignoreIt"
+        }
+      },
+      "id": "97ff9d59-38aa-44cc-9a76-28bfd88c1e87",
+      "name": "Atualizar planilha",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1080,
+        840
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Formulário - Cadastrar NF": {
+      "main": [
+        [
+          {
+            "node": "Validar cadastro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar cadastro": {
+      "main": [
+        [
+          {
+            "node": "Consultar NF (cadastro)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar NF (cadastro)": {
+      "main": [
+        [
+          {
+            "node": "Ler planilha (cadastro)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler planilha (cadastro)": {
+      "main": [
+        [
+          {
+            "node": "Montar resultado (cadastro)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar resultado (cadastro)": {
+      "main": [
+        [
+          {
+            "node": "Cadastro válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Incluir linha na planilha": {
+      "main": [
+        [
+          {
+            "node": "Tela - Cadastro concluído",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cadastro válido?": {
+      "main": [
+        [
+          {
+            "node": "Incluir linha na planilha",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tela - Cadastro recusado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formulário - Confirmar recebimento Rio": {
+      "main": [
+        [
+          {
+            "node": "Validar recebimento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar recebimento": {
+      "main": [
+        [
+          {
+            "node": "Ler planilha (recebimento)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler planilha (recebimento)": {
+      "main": [
+        [
+          {
+            "node": "Localizar NF (recebimento)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Localizar NF (recebimento)": {
+      "main": [
+        [
+          {
+            "node": "Recebimento válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gravar recebimento": {
+      "main": [
+        [
+          {
+            "node": "Tela - Recebimento registrado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recebimento válido?": {
+      "main": [
+        [
+          {
+            "node": "Gravar recebimento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tela - Recebimento recusado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A cada hora (07h-19h, seg-sáb)": {
+      "main": [
+        [
+          {
+            "node": "Ler planilha (horário)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler planilha (horário)": {
+      "main": [
+        [
+          {
+            "node": "Preparar consulta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar consulta": {
+      "main": [
+        [
+          {
+            "node": "Consultar eventos (horário)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar eventos (horário)": {
+      "main": [
+        [
+          {
+            "node": "Comparar e preparar atualizações",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comparar e preparar atualizações": {
+      "main": [
+        [
+          {
+            "node": "Atualizar planilha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "tags": []
+}
