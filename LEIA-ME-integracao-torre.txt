@@ -1,0 +1,41 @@
+TORRE DE CONTROLE IMPORTADOS SUL x RIO | INTEGRACAO HTML + N8N
+
+ESTADO: pacote para homologacao. Nao foi publicado nem conectado ao ambiente real.
+
+ARQUIVOS
+1. torre_importados_api_n8n_homologacao.json = workflow API adicional (29 nos)
+2. torre_controle_importados_integrado.html = interface preparada para consumir API
+
+PASSO A PASSO
+1. Importe o JSON como NOVO workflow na mesma instancia n8n. Nao substitua o fluxo original.
+2. Confira as credenciais SQL Server e Google Sheets referenciadas pelos nos.
+3. Verifique a aba CONTROLE e os nomes de colunas; a API usa a planilha atual.
+4. Proteja os endpoints ANTES de ativar: use autenticacao no proxy reverso / SSO corporativo e restrinja o acesso.
+5. Configure Allowed Origins (CORS) de cada Webhook com a origem REAL da pagina HTML, removendo o placeholder https://SEU-SITE-INTERNO.example.
+6. Hospede o HTML em endereco interno com HTTPS e autenticacao. Nao e recomendado depender de HTML direto no Respond to Webhook em versoes novas do n8n devido ao iframe sandbox.
+7. No HTML, configure a constante API_BASE com a URL de PRODUCAO/APOS HOMOLOGACAO:
+   const API_BASE = 'https://n8n.somalabs.com.br/webhook/torre-importados';
+   Para testes, use a URL equivalente /webhook-test/torre-importados, com o n8n aguardando eventos.
+8. Teste LISTAR, CADASTRAR UM LOTE e SALVAR CARRO/OBSERVACAO/RECEBIMENTO com NFs de homologacao.
+9. Somente depois de aprovados testes de autenticacao, CORS, concorrencia, permissao e duplicidade, ative para a operacao.
+
+ROTAS PREVISTAS
+GET  /webhook/torre-importados/listar
+POST /webhook/torre-importados/cadastrar  {"carro":"182-26","serie":"12","nfs":["27607","27608"]}
+POST /webhook/torre-importados/salvar {"id":"000027607-12","acao":"carro","valor":"182-26"}
+POST /webhook/torre-importados/salvar {"id":"000027607-12","acao":"observacao","valor":"FALTA 1 M"}
+POST /webhook/torre-importados/salvar {"id":"000027607-12","acao":"recebimento","confirmar":true}
+
+REGRAS PRESERVADAS
+- Consultas de faturamento, agendamento SUL, embarque e entrada fiscal reaproveitam o SQL do workflow atual.
+- Atualizacao horaria original permanece separada.
+- Cadastro do lote e recusado por completo se alguma NF falhar validacao, duplicidade ou consulta.
+- Recebimento com data/hora de Sao Paulo; a tela nao desfaz recebimento.
+- Apenas CARRO, OBSERVACAO_RECEBIMENTO e RECEBIMENTO_RIO podem ser alterados na interface.
+
+LIMITACOES DESTA PRIMEIRA VERSAO
+- Sem mecanismo de autenticacao incluido no workflow. NUNCA ative sem protecao externa.
+- Conferencia de duplicidade nao e atomica; cadastros simultaneos precisam de serializacao ou base transacional para eliminar corrida.
+- Falhas intermediarias de gravacao em lote podem causar escrita parcial. Homologar reprocessamento.
+- Metricas de painel calculadas sobre toda a base lida, sem paginacao.
+- A API e a interface nao foram executadas contra a instancia real nem contra o Google Sheets real.

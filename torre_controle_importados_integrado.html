@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Torre de Controle | Importados SUL → RIO</title>
+<style>
+:root{--bg:#f5f7fa;--surface:#fff;--text:#17253b;--muted:#718097;--line:#e2e8f0;--blue:#2459a6;--green:#147a52;--ltgreen:#e8f6ef;--orange:#af6b14;--ltorange:#fff4df;--red:#ae3844;--ltred:#fdecee}*{box-sizing:border-box}body{margin:0;background:var(--bg);font:14px/1.45 Inter,Segoe UI,Arial,sans-serif;color:var(--text)}.shell{max-width:1600px;margin:auto;padding:30px 27px}.header,.between,.toolbar,.actions,.tabs,.pillrow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.eyebrow{font-size:11px;letter-spacing:.12em;font-weight:750;color:var(--blue)}h1{font-size:26px;letter-spacing:-.8px;margin:5px 0 2px}p{margin:0;color:var(--muted)}.chip{border-radius:50px;padding:6px 10px;background:#edf3fa;color:var(--blue);font-size:12px;font-weight:700}.notice{background:#fff8e8;color:#865a1f;border:1px solid #efd6a1;border-radius:10px;padding:11px 14px;margin:20px 0 18px;font-size:13px}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin:16px 0 25px}.card,.panel{background:var(--surface);border:1px solid var(--line);border-radius:13px}.card{padding:17px 19px}.card small{color:var(--muted);font-weight:650}.card strong{display:block;font-size:27px;margin:5px 0 0}.panel{overflow:hidden}.panelhead{padding:20px 20px 15px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}.panelhead h2{font-size:17px;letter-spacing:-.4px;margin:0 0 3px}.btn{border:1px solid var(--line);background:#fff;color:var(--text);font-weight:700;border-radius:8px;padding:10px 13px;cursor:pointer;font-size:13px}.btn:hover{background:#f2f5f9}.primary{background:var(--blue);border-color:var(--blue);color:#fff}.primary:hover{background:#194783}.search,select,input,textarea{border:1px solid #d5deeb;border-radius:8px;background:#fff;padding:10px 12px;color:var(--text);font:inherit;outline:none}.search:focus,select:focus,input:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 2px #2459a620}.search{min-width:290px}.toolbar{padding:0 20px 15px;justify-content:flex-start}.tablewrap{overflow:auto;max-height:560px}table{border-collapse:separate;border-spacing:0;min-width:1680px;width:100%;font-size:12px}th{position:sticky;top:0;z-index:1;background:#f1f5f9;color:#536176;text-align:left;font-weight:750;border-top:1px solid var(--line);border-bottom:1px solid var(--line);white-space:nowrap}th,td{padding:11px 12px;border-bottom:1px solid #eef1f5}th.manual{background:#e3f5eb;color:#13714d}tbody tr:hover{background:#f8faff}td{white-space:nowrap}td.primarycell{font-weight:750;color:#1e4379}td input,td select{padding:6px 8px;font-size:12px;max-width:130px;border-color:#b9dbcb;background:#f4fbf6}td input.wide{max-width:180px}td input[type=checkbox]{accent-color:#18774f;width:17px;height:17px;vertical-align:middle}th span{display:block;font-size:10px;font-weight:500;margin-top:2px;opacity:.7}.status{display:inline-block;font-size:11px;font-weight:750;border-radius:20px;padding:4px 9px;background:#eef2f7;color:#57677c}.status.ok{background:var(--ltgreen);color:var(--green)}.status.warn{background:var(--ltorange);color:var(--orange)}.status.bad{background:var(--ltred);color:var(--red)}.foot{padding:13px 20px;color:var(--muted);font-size:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}.legend{display:flex;gap:16px;align-items:center;flex-wrap:wrap}.dot{width:9px;height:9px;display:inline-block;border-radius:2px;margin-right:6px;background:#b9c3d0}.dot.manual{background:#62b28b}.dialogbg{display:none;position:fixed;inset:0;background:#12203a80;z-index:20;align-items:center;justify-content:center;padding:18px}.dialogbg.show{display:flex}.dialog{width:min(640px,100%);background:#fff;box-shadow:0 18px 60px #10203940;border-radius:16px;padding:25px}.dialog h2{margin:0 0 7px}.fields{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:20px 0}.field{display:flex;flex-direction:column;gap:5px}.field.wide{grid-column:1/-1}label{font-size:12px;font-weight:750}.hint{font-size:12px;color:var(--muted)}textarea{min-height:100px;resize:vertical}.alert{margin-top:10px;font-size:12px;color:var(--red);min-height:18px}.empty{text-align:center;padding:50px;color:var(--muted)}@media(max-width:850px){.shell{padding:18px 12px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.search{min-width:100%;width:100%}.panelhead{padding:17px}.toolbar{padding:0 17px 14px}h1{font-size:21px}}@media(max-width:480px){.cards{gap:8px}.card{padding:12px}.card strong{font-size:23px}.fields{grid-template-columns:1fr}}
+</style></head><body><main class="shell">
+<header class="header"><div><div class="eyebrow">LOGÍSTICA · TORRE DE CONTROLE</div><h1>Importados SUL <span style="color:#8b9ab0">→</span> CD Rio</h1><p>Acompanhamento de notas fiscais, movimentação e recebimento</p></div><span class="chip">◉ Integração n8n preparada</span></header>
+<div class="notice" id="banner"><strong>Integração não ativada:</strong> configure a URL da API no início do JavaScript e publique o workflow n8n após homologação. Até lá, os dados são fictícios e nenhuma alteração é gravada.</div>
+<section class="cards"><div class="card"><small>Notas cadastradas</small><strong id="total">0</strong></div><div class="card"><small>Aguardando embarque</small><strong id="aguarda">0</strong></div><div class="card"><small>Em trânsito</small><strong id="transito">0</strong></div><div class="card"><small>Recebidas no Rio</small><strong id="recebidas">0</strong></div></section>
+<section class="panel"><div class="panelhead"><div><h2>Controle de notas fiscais</h2><p>Visualize os registros e edite somente os campos operacionais em verde.</p></div><div class="actions"><button class="btn" id="reset">↻ Atualizar dados</button><button class="btn primary" id="add">＋ Cadastrar NFs</button></div></div><div class="toolbar"><input class="search" id="search" placeholder="Buscar NF, carro, chave, marca ou referência..." aria-label="Buscar notas"><select id="filter"><option value="">Todas as situações</option><option>Aguardando embarque</option><option>Em trânsito</option><option>Recebido no Rio</option></select><span class="hint" id="count"></span></div>
+<div class="tablewrap"><table><thead><tr><th class="manual">Carro<span>Manual</span></th><th>NF</th><th>Série</th><th>Chave NF-e</th><th>Marca</th><th>Referência</th><th>Material</th><th>Canal</th><th>Peças</th><th>Valor (R$)</th><th>Agendamento</th><th>Conferência SUL</th><th>Embarque</th><th>Prev. chegada</th><th>Romaneio</th><th>Transportadora</th><th>Situação</th><th class="manual">Recebido Rio<span>Manual</span></th><th class="manual">Observação<span>Manual</span></th><th>Data recebimento</th><th>Entrada fiscal</th></tr></thead><tbody id="tbody"></tbody></table></div><footer class="foot"><span id="shown"></span><span class="legend"><span><i class="dot manual"></i>Preenchimento operacional</span><span><i class="dot"></i>Dados automáticos do SQL</span></span></footer></section>
+<p style="font-size:12px;margin:16px 3px">Versão 2 · Integração preparada para homologação · Proteja o acesso antes de ativar os endpoints de escrita.</p>
+</main><div id="modal" class="dialogbg" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="dialog"><div class="between"><h2 id="modalTitle">Cadastrar notas fiscais</h2><button class="btn" id="close" aria-label="Fechar">✕</button></div><p>Informe um carro e uma ou mais NFs. A consulta automática ao SQL será ligada na etapa de integração.</p><div class="fields"><div class="field"><label for="car">Carro</label><input id="car" placeholder="Ex.: 182-26"></div><div class="field"><label for="ser">Série padrão</label><input id="ser" inputmode="numeric" placeholder="Ex.: 12" maxlength="3"></div><div class="field wide"><label for="nfs">Notas fiscais (uma por linha)</label><textarea id="nfs" placeholder="000027610&#10;000027611&#10;000027612"></textarea><span class="hint">Com a integração ativa, o n8n valida todas as NFs no SQL antes de cadastrar o lote.</span></div></div><div id="error" class="alert"></div><div class="between"><button class="btn" id="cancel">Cancelar</button><button class="btn primary" id="confirm">Adicionar notas à tabela</button></div></div></div>
+<script>
+'use strict';
+const sample=[
+{id:'000027607-12',nf:'000027607',serie:'12',chave:'33261112345678000123550010000276071000000001',carro:'182-26',marca:'FARM',ref:'27.00020',material:'Vestido estampado',canal:'VAREJO',pecas:320,valor:48200,agend:'18/11/2026',conf:'19/11/2026',embarque:'20/11/2026',previsao:'22/11/2026',rom:'415958',transp:'Transportadora exemplo',recebido:false,obs:'',dataRio:'',entrada:''},
+{id:'000027608-12',nf:'000027608',serie:'12',chave:'33261112345678000123550010000276081000000002',carro:'182-26',marca:'ANIMALE',ref:'26.10010',material:'Blusa feminina',canal:'VAREJO',pecas:180,valor:26500,agend:'17/11/2026',conf:'18/11/2026',embarque:'19/11/2026',previsao:'21/11/2026',rom:'415959',transp:'Transportadora exemplo',recebido:true,obs:'Conferido sem divergências',dataRio:'21/11/2026 14:20',entrada:'22/11/2026'},
+{id:'000027609-12',nf:'000027609',serie:'12',chave:'33261112345678000123550010000276091000000003',carro:'183-26',marca:'FARM',ref:'27.00300',material:'Calça em linho',canal:'ATACADO',pecas:240,valor:38400,agend:'22/11/2026',conf:'',embarque:'',previsao:'',rom:'',transp:'',recebido:false,obs:'',dataRio:'',entrada:''},
+{id:'000027610-12',nf:'000027610',serie:'12',chave:'33261112345678000123550010000276101000000004',carro:'183-26',marca:'MARIA FILÓ',ref:'28.00771',material:'Saia midi',canal:'VAREJO',pecas:90,valor:13900,agend:'20/11/2026',conf:'21/11/2026',embarque:'21/11/2026',previsao:'23/11/2026',rom:'415960',transp:'Transportadora exemplo',recebido:false,obs:'',dataRio:'',entrada:''}
+];
+// Ative somente após importar e testar o workflow n8n em ambiente protegido.
+// Informe a base SEM barra final, por exemplo: https://SEU-N8N/webhook/torre-importados
+const API_BASE = 'https://n8n.somalabs.com.br/webhook-test/torre-importados';const LIVE = Boolean(API_BASE.trim());
+let rows=LIVE?[]:structuredClone(sample);
+let busy=false;
+const notice=(msg,bad=false)=>{const el=document.querySelector('#banner');el.innerHTML=msg;el.style.background=bad?'#fdecee':'#e8f6ef';el.style.color=bad?'#ae3844':'#147a52';};
+async function api(endpoint, payload){
+  const options=payload===undefined?{method:'GET'}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)};
+  const res=await fetch(API_BASE+'/'+endpoint,options);
+  let d;try{d=await res.json()}catch{throw Error('Resposta inválida do n8n (HTTP '+res.status+').')}
+  if(!res.ok||!d.ok)throw Error([d.erro||'Não foi possível concluir a operação.',...(d.detalhes||[]).slice(0,6)].join(' | '));
+  return d;
+}
+async function refresh(){
+ if(!LIVE){rows=structuredClone(sample);render();return;}
+ try{const d=await api('listar');rows=Array.isArray(d.rows)?d.rows:[];render();notice('<strong>Dados sincronizados:</strong> '+rows.length+' nota(s) carregada(s) do Google Sheets.');}
+ catch(e){notice('<strong>Falha ao consultar:</strong> '+esc(e.message),true)}
+}
+async function saveRow(r,acao,valor){
+  if(!LIVE)return;
+  if(busy)throw Error('Outra gravação está em andamento.');busy=true;
+  try{await api('salvar',{id:r.id,acao,valor,...(acao==='recebimento'?{confirmar:true}:{})});await refresh();}
+  catch(e){await refresh();notice('<strong>Não foi possível salvar:</strong> '+esc(e.message),true);throw e;}
+  finally{busy=false;}
+}
+
+const $=s=>document.querySelector(s);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const status=r=>r.recebido?'Recebido no Rio':r.embarque?'Em trânsito':'Aguardando embarque';
+function render(){const q=$('#search').value.toLowerCase().trim(),f=$('#filter').value;const vis=rows.filter(r=>(!f||status(r)===f)&&(!q||[r.nf,r.serie,r.chave,r.carro,r.marca,r.ref,r.material].some(x=>String(x??'').toLowerCase().includes(q))));$('#total').textContent=rows.length;$('#aguarda').textContent=rows.filter(r=>status(r)==='Aguardando embarque').length;$('#transito').textContent=rows.filter(r=>status(r)==='Em trânsito').length;$('#recebidas').textContent=rows.filter(r=>r.recebido).length;$('#count').textContent=vis.length+' resultado(s)';$('#shown').textContent=`Exibindo ${vis.length} de ${rows.length} notas`;
+$('#tbody').innerHTML=vis.length?vis.map(r=>{const badge=status(r),cl=r.recebido?'ok':r.embarque?'warn':'';const cell=(v,primary=false)=>`<td${primary?' class="primarycell"':''}>${esc(v||'—')}</td>`;return `<tr data-id="${esc(r.id)}"><td><input class="carEdit" aria-label="Carro da NF ${esc(r.nf)}" value="${esc(r.carro)}"></td>${cell(r.nf,true)}${cell(r.serie)}${cell(r.chave)}${cell(r.marca)}${cell(r.ref)}${cell(r.material)}${cell(r.canal)}${cell(r.pecas)}${cell(r.valor?Number(r.valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'')}${cell(r.agend)}${cell(r.conf)}${cell(r.embarque)}${cell(r.previsao)}${cell(r.rom)}${cell(r.transp)}<td><span class="status ${cl}">${badge}</span></td><td style="text-align:center"><input type="checkbox" class="receiveEdit" aria-label="Recebimento da NF ${esc(r.nf)}" ${r.recebido?'checked':''}></td><td><input class="obsEdit wide" aria-label="Observação da NF ${esc(r.nf)}" value="${esc(r.obs)}" placeholder="Informar divergência"></td>${cell(r.dataRio)}${cell(r.entrada)}</tr>`}).join(''):'<tr><td colspan="21" class="empty">Nenhuma nota encontrada.</td></tr>'}
+$('#tbody').addEventListener('change',async e=>{
+ const tr=e.target.closest('tr[data-id]');if(!tr)return;
+ const r=rows.find(x=>x.id===tr.dataset.id);if(!r)return;
+ const input=e.target;
+ let acao=null,valor=null;
+ if(input.classList.contains('carEdit')){acao='carro';valor=input.value.trim();}
+ if(input.classList.contains('obsEdit')){acao='observacao';valor=input.value.trim();}
+ if(input.classList.contains('receiveEdit')){
+  if(!input.checked){input.checked=true;alert('Um recebimento confirmado não pode ser desfeito nesta tela.');return;}
+  if(!confirm('Confirmar o recebimento físico da NF '+r.nf+' no CD Rio?')){input.checked=false;return;}
+  acao='recebimento';valor='';
+ }
+ if(!acao)return;
+ if(LIVE){try{await saveRow(r,acao,valor)}catch(e){alert(e.message)}}
+ else{
+  if(acao==='carro')r.carro=valor;
+  if(acao==='observacao')r.obs=valor;
+  if(acao==='recebimento'){r.recebido=true;r.dataRio=new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'});}
+  render();
+ }
+});
+$('#search').addEventListener('input',render);$('#filter').addEventListener('change',render);
+const close=()=>$('#modal').classList.remove('show');$('#add').onclick=()=>{$('#modal').classList.add('show');$('#error').textContent='';$('#car').focus()};$('#close').onclick=close;$('#cancel').onclick=close;$('#modal').onclick=e=>{if(e.target===$('#modal'))close()};document.addEventListener('keydown',e=>{if(e.key==='Escape')close()});$('#reset').onclick=()=>refresh();
+$('#confirm').onclick=async()=>{
+ const carro=$('#car').value.trim(),serie=$('#ser').value.trim(),raw=$('#nfs').value.split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean);
+ if(!carro||!/^[0-9]{1,3}$/.test(serie)||!raw.length){$('#error').textContent='Preencha o carro, uma série numérica e pelo menos uma NF.';return}
+ if(raw.some(n=>!/^[0-9]{1,9}$/.test(n))){$('#error').textContent='Cada NF deve ter até 9 dígitos numéricos.';return}
+ const ids=raw.map(n=>n.padStart(9,'0')+'-'+Number(serie));
+ if(new Set(ids).size!==ids.length||ids.some(id=>rows.some(r=>r.id===id))){$('#error').textContent='Existem notas repetidas ou já cadastradas.';return}
+ if(LIVE){
+  $('#confirm').disabled=true;
+  try{const d=await api('cadastrar',{carro,serie,nfs:raw});close();$('#car').value='';$('#ser').value='';$('#nfs').value='';await refresh();notice('<strong>Cadastro concluído:</strong> '+esc(d.mensagem||'Notas cadastradas.'));}
+  catch(e){$('#error').textContent=e.message;}
+  finally{$('#confirm').disabled=false;}
+  return;
+ }
+ for(const nf of raw){const id=nf.padStart(9,'0')+'-'+Number(serie);rows.unshift({id,nf:nf.padStart(9,'0'),serie:String(Number(serie)),chave:'',carro,marca:'',ref:'',material:'',canal:'',pecas:'',valor:'',agend:'',conf:'',embarque:'',previsao:'',rom:'',transp:'',recebido:false,obs:'',dataRio:'',entrada:''})}
+ $('#car').value='';$('#ser').value='';$('#nfs').value='';close();render();
+};
+render();if(LIVE)refresh();
+</script></body></html>

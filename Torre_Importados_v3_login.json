@@ -1,0 +1,1749 @@
+{
+  "name": "Torre Importados - Publicar HTML (homologacao leitura) v3 - login",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "4c12252b-f2f9-47a1-a008-aee98ad226ab",
+      "name": "API - Resposta cadastro",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        16448,
+        7088
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ids=$('API - Validar lote').first().json.ids;return [{json:{ok:true,quantidade:ids.length,mensagem:`${ids.length} NF(s) cadastrada(s) na planilha.`,ids}}];"
+      },
+      "id": "606d9d38-1b38-48b7-8c89-5359adb8404b",
+      "name": "API - Confirmar cadastro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16224,
+        7088
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED",
+          "handlingExtraData": "ignoreIt"
+        }
+      },
+      "id": "e2568e87-4021-4da6-a864-f425960ab0c9",
+      "name": "API - Inserir lote",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        16000,
+        7088
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "credentials": {
+        "googleApi": {
+          "id": "OV7j86HlF1UdMJzP",
+          "name": "Google Sheets account 5"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          },
+          "responseCode": 409
+        }
+      },
+      "id": "6d08ecad-ca2e-43e6-8ebf-2b5b6d5ac8db",
+      "name": "API - Recusar cadastro",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        16000,
+        7264
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cb2a2dfd-98d5-492c-b371-7ce528b60a0b",
+      "name": "API - Cadastro permitido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        15776,
+        7088
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const req=$('API - Validar lote').first().json;\nconst sql=$('API - Consultar faturamento').all().map(x=>x.json).filter(x=>x.CHAVE_NFE);\nconst t=v=>String(v??'').trim().replace(/^'/,'');const num=v=>String(v??'').replace(/\\D/g,'');\nconst id=(nf,serie)=>num(nf).padStart(9,'0')+'-'+String(Number(num(serie)));\nconst byId=new Map();for(const d of sql){const k=id(d.NF_SAIDA,d.SERIE_NF);if(!byId.has(k))byId.set(k,[]);byId.get(k).push(d)}\nconst existing=$input.all().map(x=>x.json).filter(x=>t(x.IDENTIFICACAO));\nconst knownIds=new Set(existing.map(r=>t(r.IDENTIFICACAO)));\nconst knownKeys=new Set(existing.map(r=>num(r.CHAVE_NFE)).filter(Boolean));\nconst failures=[];const newRows=[];const now=$now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd HH:mm:ss');\nconst T=v=>\"'\"+t(v);\nfor(const k of req.ids){\n const list=byId.get(k)||[];\n if(knownIds.has(k)){failures.push(`${k}: já cadastrada`);continue}\n if(!list.length){failures.push(`${k}: não localizada no faturamento`);continue}\n if(list.length>1){failures.push(`${k}: localizada em mais de uma filial, use a chave`);continue}\n const d=list[0];if(knownKeys.has(num(d.CHAVE_NFE))){failures.push(`${k}: chave já cadastrada`);continue}\n newRows.push({IDENTIFICACAO:T(k),NOTA_FISCAL:T(num(d.NF_SAIDA).padStart(9,'0')),CARRO:T(req.carro),\n MARCA:t(d.MARCA),REFERENCIA:T(d.REFERENCIA),DESCRICAO_MATERIAL:T(d.DESCRICAO_MATERIAL),CANAL:t(d.CANAL),\n QUANTIDADE:Number(d.QUANTIDADE??0),VALOR:Number(d.VALOR??0),STATUS_INTEGRACAO:'INTEGRADO',\n DATA_AGENDAMENTO:t(d.DATA_AGENDAMENTO),INICIO_CONFERENCIA_SUL:t(d.INICIO_CONFERENCIA_SUL),FIM_CONFERENCIA_SUL:t(d.FIM_CONFERENCIA_SUL),\n DATA_EMBARQUE:t(d.DATA_EMBARQUE),PREVISAO_CHEGADA:t(d.PREVISAO_CHEGADA),RECEBIMENTO_RIO:'Não',\n DATA_ENTRADA_FISCAL:t(d.DATA_ENTRADA_FISCAL),ROMANEIO:t(d.ROMANEIO)?T(d.ROMANEIO):'',PLACA:t(d.PLACA)?T(d.PLACA):'',\n MOTORISTA:t(d.MOTORISTA)?T(d.MOTORISTA):'',SERIE_NF:T(d.SERIE_NF),CHAVE_NFE:T(d.CHAVE_NFE),\n TRANSPORTADORA:t(d.TRANSPORTADORA)?T(d.TRANSPORTADORA):'',MENSAGEM:'',ULTIMA_ATUALIZACAO:now});\n}\n// Não gravar lote parcialmente: evita registros inesperados no fechamento operacional.\nif(failures.length)return [{json:{ok:false,erro:'Lote recusado. Nenhuma NF foi cadastrada.',detalhes:failures}}];\nreturn newRows.map(r=>({json:{ok:true,...r}}));"
+      },
+      "id": "bb45db2c-45b3-4530-82e0-fc7fe92ec58e",
+      "name": "API - Preparar cadastro em lote",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        15568,
+        7088
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "40fc5e36-c1ee-4797-b85f-c1ba90619a8f",
+      "name": "API - Ler duplicidades",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        15344,
+        7088
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "credentials": {
+        "googleApi": {
+          "id": "OV7j86HlF1UdMJzP",
+          "name": "Google Sheets account 5"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SET NOCOUNT ON;\n-- ============================================================\n-- CONSULTA CONSOLIDADA - TORRE DE CONTROLE IMPORTADOS SUL x RIO\n-- Faturamento + eventos SUL + entrada fiscal, em uma unica consulta.\n-- Parametros montados no n8n contendo APENAS digitos, virgula e hifen\n-- (validados no node anterior). Requer STRING_SPLIT (compatibilidade 130+).\n-- ============================================================\nDECLARE @CHAVES VARCHAR(MAX) = '{{ $json.chaves }}';\nDECLARE @NFS    VARCHAR(MAX) = '{{ $json.nfs }}';\n\n;WITH ALVO_CHAVE AS (\n    SELECT DISTINCT CAST(value AS VARCHAR(44)) AS CHAVE_NFE\n    FROM STRING_SPLIT(@CHAVES, ',')\n    WHERE LEN(value) = 44\n), ALVO_NF AS (\n    SELECT DISTINCT\n        CAST(LEFT(value, CHARINDEX('-', value) - 1) AS VARCHAR(20)) AS NF_SAIDA,\n        CAST(SUBSTRING(value, CHARINDEX('-', value) + 1, 10) AS VARCHAR(10)) AS SERIE_NF\n    FROM STRING_SPLIT(@NFS, ',')\n    WHERE CHARINDEX('-', value) > 1\n), NF AS (\n    SELECT A.FILIAL, A.NF_SAIDA, A.SERIE_NF, A.CHAVE_NFE, A.NOME_CLIFOR\n    FROM FATURAMENTO A\n    INNER JOIN ALVO_CHAVE C ON C.CHAVE_NFE = A.CHAVE_NFE\n\n    UNION\n\n    SELECT A.FILIAL, A.NF_SAIDA, A.SERIE_NF, A.CHAVE_NFE, A.NOME_CLIFOR\n    FROM FATURAMENTO A\n    INNER JOIN ALVO_NF N\n        ON N.NF_SAIDA = A.NF_SAIDA\n       AND N.SERIE_NF = A.SERIE_NF\n    WHERE A.CHAVE_NFE IS NOT NULL\n), ITENS AS (\n    SELECT\n        FP.FILIAL, FP.NF_SAIDA, FP.SERIE_NF,\n        SUM(FP.QTDE)  AS QUANTIDADE,\n        SUM(FP.VALOR) AS VALOR,\n        COUNT(DISTINCT LTRIM(RTRIM(LR.DESC_REDE_LOJAS))) AS TOTAL_MARCAS,\n        MAX(LTRIM(RTRIM(LR.DESC_REDE_LOJAS)))            AS MARCA,\n        -- Regra: uma NF possui um unico produto (podendo dividir em cores)\n        COUNT(DISTINCT LTRIM(RTRIM(FP.PRODUTO)))         AS TOTAL_PRODUTOS,\n        MAX(LTRIM(RTRIM(FP.PRODUTO)))                    AS REFERENCIA,\n        MAX(LTRIM(RTRIM(P.DESC_PRODUTO)))                AS DESCRICAO_MATERIAL\n    FROM FATURAMENTO_PROD FP\n    INNER JOIN NF\n        ON NF.FILIAL = FP.FILIAL\n       AND NF.NF_SAIDA = FP.NF_SAIDA\n       AND NF.SERIE_NF = FP.SERIE_NF\n    LEFT JOIN PRODUTOS P    ON P.PRODUTO = FP.PRODUTO\n    LEFT JOIN LOJAS_REDE LR ON LR.REDE_LOJAS = P.REDE_LOJAS\n    GROUP BY FP.FILIAL, FP.NF_SAIDA, FP.SERIE_NF\n), AG AS (\n    SELECT\n        R.CHAVE_NFE, R.DATA_HORA_AGENDAMENTO,\n        R.DATA_INICIO_RECEBIMENTO, R.DATA_FIM_RECEBIMENTO,\n        ROW_NUMBER() OVER (\n            PARTITION BY R.CHAVE_NFE\n            ORDER BY R.DATA_HORA_AGENDAMENTO DESC,\n                     R.DATA_FIM_RECEBIMENTO DESC,\n                     R.DATA_INICIO_RECEBIMENTO DESC\n        ) AS RN\n    FROM LL_RECEBIMENTO_AGENDADO R\n    INNER JOIN (SELECT DISTINCT CHAVE_NFE FROM NF) K ON K.CHAVE_NFE = R.CHAVE_NFE\n), EMB AS (\n    SELECT\n        I.CHAVE_NFE, C.ROMANEIO, C.TRANSPORTADORA, C.PLACA, C.MOTORISTA, C.DATA_EMBARQUE,\n        ROW_NUMBER() OVER (\n            PARTITION BY I.CHAVE_NFE\n            ORDER BY CASE WHEN C.DATA_EMBARQUE IS NOT NULL THEN 0 ELSE 1 END,\n                     C.DATA_EMBARQUE DESC,\n                     C.DATA_HORA_CRIACAO DESC,\n                     C.ROMANEIO DESC\n        ) AS RN\n    FROM SS_ROMANEIOS_CARGA_ITEM I\n    INNER JOIN SS_ROMANEIOS_CARGA C ON C.ROMANEIO = I.ROMANEIO\n    INNER JOIN (SELECT DISTINCT CHAVE_NFE FROM NF) K ON K.CHAVE_NFE = I.CHAVE_NFE\n    WHERE LTRIM(RTRIM(C.TIPO_ROMANEIO)) = 'SUL X RJ (IMPORTADO)'\n), ENT AS (\n    SELECT\n        E.CHAVE_NFE, E.DATA_DIGITACAO,\n        ROW_NUMBER() OVER (\n            PARTITION BY E.CHAVE_NFE\n            ORDER BY E.DATA_DIGITACAO DESC, E.NUMERO_ENTRADA DESC\n        ) AS RN\n    FROM ENTRADAS E\n    INNER JOIN (SELECT DISTINCT CHAVE_NFE FROM NF) K ON K.CHAVE_NFE = E.CHAVE_NFE\n    WHERE ISNULL(E.NOTA_CANCELADA, 0) = 0\n      AND E.DATA_DIGITACAO IS NOT NULL\n)\nSELECT\n    NF.CHAVE_NFE,\n    LTRIM(RTRIM(NF.NF_SAIDA)) AS NF_SAIDA,\n    LTRIM(RTRIM(NF.SERIE_NF)) AS SERIE_NF,\n    LTRIM(RTRIM(NF.FILIAL))   AS FILIAL,\n\n    CASE\n        WHEN LTRIM(RTRIM(NF.NOME_CLIFOR)) = 'CONTROLE QUALIDADE ATAC'   THEN 'ATACADO'\n        WHEN LTRIM(RTRIM(NF.NOME_CLIFOR)) = 'CONTROLE QUALIDADE VAREJO' THEN 'VAREJO'\n        ELSE LTRIM(RTRIM(NF.NOME_CLIFOR))\n    END AS CANAL,\n\n    CASE WHEN I.TOTAL_MARCAS > 1   THEN 'MULTIMARCAS' ELSE I.MARCA END AS MARCA,\n    CASE WHEN I.TOTAL_PRODUTOS > 1 THEN 'MÚLTIPLAS' ELSE I.REFERENCIA END AS REFERENCIA,\n    CASE WHEN I.TOTAL_PRODUTOS > 1 THEN 'MÚLTIPLAS' ELSE I.DESCRICAO_MATERIAL END AS DESCRICAO_MATERIAL,\n    I.QUANTIDADE,\n    I.VALOR,\n\n    -- Datas em ISO (yyyy-mm-dd): interpretadas corretamente pelo Sheets em qualquer localidade\n    CONVERT(VARCHAR(10), AG.DATA_HORA_AGENDAMENTO, 23)   AS DATA_AGENDAMENTO,\n    CONVERT(VARCHAR(10), AG.DATA_INICIO_RECEBIMENTO, 23) AS INICIO_CONFERENCIA_SUL,\n    CONVERT(VARCHAR(10), AG.DATA_FIM_RECEBIMENTO, 23)    AS FIM_CONFERENCIA_SUL,\n\n    CAST(EMB.ROMANEIO AS VARCHAR(30))   AS ROMANEIO,\n    LTRIM(RTRIM(EMB.TRANSPORTADORA))    AS TRANSPORTADORA,\n    LTRIM(RTRIM(EMB.PLACA))             AS PLACA,\n    LTRIM(RTRIM(EMB.MOTORISTA))         AS MOTORISTA,\n    CONVERT(VARCHAR(10), EMB.DATA_EMBARQUE, 23) AS DATA_EMBARQUE,\n    CONVERT(VARCHAR(10), DATEADD(DAY, 2, CAST(EMB.DATA_EMBARQUE AS DATE)), 23) AS PREVISAO_CHEGADA,\n\n    CONVERT(VARCHAR(10), ENT.DATA_DIGITACAO, 23) AS DATA_ENTRADA_FISCAL\nFROM NF\nLEFT JOIN ITENS I\n    ON I.FILIAL = NF.FILIAL\n   AND I.NF_SAIDA = NF.NF_SAIDA\n   AND I.SERIE_NF = NF.SERIE_NF\nLEFT JOIN AG  ON AG.CHAVE_NFE  = NF.CHAVE_NFE AND AG.RN = 1\nLEFT JOIN EMB ON EMB.CHAVE_NFE = NF.CHAVE_NFE AND EMB.RN = 1\nLEFT JOIN ENT ON ENT.CHAVE_NFE = NF.CHAVE_NFE AND ENT.RN = 1;\n"
+      },
+      "id": "83731390-5bc5-444f-a908-372b736a6114",
+      "name": "API - Consultar faturamento",
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        15104,
+        7088
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "microsoftSql": {
+          "id": "JxEAFpnayhrOYRpo",
+          "name": "sql_serve_somalog"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          },
+          "responseCode": 400
+        }
+      },
+      "id": "89303eb6-b102-4dfd-9a90-b55397c4e695",
+      "name": "API - Erro no lote",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        15104,
+        7264
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "246afd38-9671-4148-ba64-931fdecab782",
+      "name": "API - Lote válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        14896,
+        7104
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let b=$input.first().json.body??{};if(typeof b==='string'){try{b=JSON.parse(b)}catch(e){b={}}}\nconst car=String(b.carro??'').trim();const serie=String(b.serie??'').trim();const nfs=Array.isArray(b.nfs)?b.nfs.map(v=>String(v).trim()):[];\nlet erro='';\nif(!car||car.length>60)erro='Informe o carro (até 60 caracteres).';\nelse if(!/^\\d{1,3}$/.test(serie))erro='Série inválida.';\nelse if(!nfs.length||nfs.length>100)erro='Informe de 1 a 100 NFs.';\nelse if(nfs.some(n=>!/^\\d{1,9}$/.test(n)))erro='As NFs devem conter até 9 dígitos numéricos.';\nconst ids=nfs.map(n=>n.padStart(9,'0')+'-'+Number(serie));\nif(!erro&&new Set(ids).size!==ids.length)erro='Existem NFs repetidas no lote.';\nreturn [{json:{ok:!erro,erro,carro:car,serie:String(Number(serie)),ids,nfs:ids.join(','),chaves:''}}];"
+      },
+      "id": "a04543e1-922d-4eee-8605-b0175f7ca560",
+      "name": "API - Validar lote",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14688,
+        7104
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "torre-importados/cadastrar",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "a4a0c7e9-ccae-401d-b6e5-29fb5dbda110",
+      "name": "API - POST cadastrar",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        13792,
+        7104
+      ],
+      "webhookId": "a50c4519-0eed-4204-b0bb-1bbfb1e80b8d"
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "a4ed0228-db50-4508-8460-7d926849b597",
+      "name": "API - Resposta salvar",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        16448,
+        6560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{ok:true,mensagem:'Alteração salva na planilha Google Sheets.'}}];"
+      },
+      "id": "b480333c-0dc1-4704-9617-c842d62b1f42",
+      "name": "API - Confirmar alteração",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16224,
+        6560
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "IDENTIFICACAO"
+          ],
+          "schema": []
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED",
+          "handlingExtraData": "ignoreIt"
+        }
+      },
+      "id": "d1829986-180c-410e-a0d8-44ec3a263ae7",
+      "name": "API - Gravar alteração",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        16000,
+        6560
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "credentials": {
+        "googleApi": {
+          "id": "OV7j86HlF1UdMJzP",
+          "name": "Google Sheets account 5"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "25933661-1f76-49aa-aa0a-9ac6cae311da",
+      "name": "API - Sem mudança",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        16000,
+        6752
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.semMudanca }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "typeValidation": "loose"
+          }
+        },
+        "options": {}
+      },
+      "id": "aa883f7f-e878-4dd0-a9bf-770b46c20e6e",
+      "name": "API - Precisa gravar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        15776,
+        6624
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          },
+          "responseCode": 409
+        }
+      },
+      "id": "1990e3da-648c-482d-aca6-1c6245c5f07c",
+      "name": "API - Erro ao salvar",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        15776,
+        6800
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d0a86e50-5d2e-4e5e-a02a-e7d13eda44fb",
+      "name": "API - Alteração preparada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        15568,
+        6640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const req=$('API - Validar alteração').first().json;\nconst t=v=>String(v??'').trim().replace(/^'/,'');\nconst rows=$input.all().map(i=>i.json).filter(r=>t(r.IDENTIFICACAO)===req.id);\nconst fail=erro=>[{json:{ok:false,erro}}];\nif(rows.length!==1)return fail(rows.length?'Identificação duplicada na planilha.':'NF não encontrada na planilha.');\nconst row=rows[0];const now=$now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd HH:mm:ss');\nconst upd={IDENTIFICACAO:req.id,ULTIMA_ATUALIZACAO:now};\nconst safe=v=>\"'\"+v.replace(/^'/,'');\nif(req.acao==='carro'){if(t(row.CARRO)===req.valor)return [{json:{ok:true,semMudanca:true}}];upd.CARRO=safe(req.valor)}\nif(req.acao==='observacao'){if(t(row.OBSERVACAO_RECEBIMENTO)===req.valor)return [{json:{ok:true,semMudanca:true}}];upd.OBSERVACAO_RECEBIMENTO=req.valor?safe(req.valor):''}\nif(req.acao==='recebimento'){\n if(/^sim$/i.test(t(row.RECEBIMENTO_RIO)))return fail('Esta NF já foi recebida. Não é permitido desfazer o recebimento.');\n upd.RECEBIMENTO_RIO='Sim';upd.DATA_RECEBIMENTO_RIO=now;\n}\nreturn [{json:{ok:true,semMudanca:false,...upd}}];"
+      },
+      "id": "bb411edb-9a51-4f04-85c7-c47103d1748e",
+      "name": "API - Preparar gravação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        15344,
+        6640
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "dd8f8adf-6181-441e-bf4e-e332f2b9688d",
+      "name": "API - Ler para alterar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        15120,
+        6640
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "credentials": {
+        "googleApi": {
+          "id": "OV7j86HlF1UdMJzP",
+          "name": "Google Sheets account 5"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          },
+          "responseCode": 400
+        }
+      },
+      "id": "012360fd-0d11-4832-85fd-c65b8dc5057a",
+      "name": "API - Erro de validação",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        15120,
+        6848
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "20c66186-ed08-484b-a5c6-98afbc6673dc",
+      "name": "API - Alteração válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        14896,
+        6688
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let b=$input.first().json.body??{};\nif(typeof b==='string'){try{b=JSON.parse(b)}catch(e){b={}}}\nconst id=String(b.id??'').replace(/^'/,'').trim();\nconst action=String(b.acao??'').trim();\nconst novo=String(b.valor??'').trim();\nlet erro='';\nif(!/^\\d{9}-\\d{1,3}$/.test(id))erro='Identificação inválida.';\nelse if(!['carro','observacao','recebimento'].includes(action))erro='Ação não permitida.';\nelse if(action==='carro'&&(!novo||novo.length>60))erro='Informe um carro válido (até 60 caracteres).';\nelse if(action==='observacao'&&novo.length>500)erro='Observação acima de 500 caracteres.';\nelse if(action==='recebimento'&&b.confirmar!==true)erro='Confirmação explícita necessária.';\nreturn [{json:{ok:!erro,erro,id,acao:action,valor:novo}}];"
+      },
+      "id": "49758bf2-fc38-44dc-b87b-f02f88e380e2",
+      "name": "API - Validar alteração",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14688,
+        6688
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "torre-importados/salvar",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "6c3353a1-578a-4fc6-aa45-b1dfd6b7355b",
+      "name": "API - POST salvar",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        13792,
+        6688
+      ],
+      "webhookId": "bd6b7e12-f58f-48e4-8ed5-4b30f2b5fc2b"
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "577b6df9-8dc3-4feb-a3e8-7527f73da31f",
+      "name": "API - Resposta listar",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        15136,
+        6384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows=$input.all().map(i=>i.json).filter(r=>String(r.IDENTIFICACAO||'').trim());\nconst t=v=>String(v??'').trim().replace(/^'/,'');\nconst yes=v=>/^sim$/i.test(t(v));\nconst result=rows.map(r=>({\n id:t(r.IDENTIFICACAO),nf:t(r.NOTA_FISCAL),serie:t(r.SERIE_NF),chave:t(r.CHAVE_NFE),carro:t(r.CARRO),\n marca:t(r.MARCA),ref:t(r.REFERENCIA),material:t(r.DESCRICAO_MATERIAL),canal:t(r.CANAL),\n pecas:r.QUANTIDADE??'',valor:r.VALOR??'',agend:t(r.DATA_AGENDAMENTO),conf:t(r.FIM_CONFERENCIA_SUL),\n embarque:t(r.DATA_EMBARQUE),previsao:t(r.PREVISAO_CHEGADA),rom:t(r.ROMANEIO),transp:t(r.TRANSPORTADORA),\n recebido:yes(r.RECEBIMENTO_RIO),obs:t(r.OBSERVACAO_RECEBIMENTO),dataRio:t(r.DATA_RECEBIMENTO_RIO),\n entrada:t(r.DATA_ENTRADA_FISCAL),mensagem:t(r.MENSAGEM),statusIntegracao:t(r.STATUS_INTEGRACAO),\n inicioConferencia:t(r.INICIO_CONFERENCIA_SUL),placa:t(r.PLACA),motorista:t(r.MOTORISTA),atualizado:t(r.ULTIMA_ATUALIZACAO)\n}));\nreturn [{json:{ok:true,total:result.length,rows:result}}];"
+      },
+      "id": "777d0390-3074-4c41-a82f-4cf10ec5daef",
+      "name": "API - Formatador de notas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14912,
+        6384
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "3cd68691-a436-465b-86cc-210eaa3e431c",
+      "name": "API - Ler notas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        14688,
+        6384
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "credentials": {
+        "googleApi": {
+          "id": "OV7j86HlF1UdMJzP",
+          "name": "Google Sheets account 5"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "torre-importados/listar",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        },
+        "httpMethod": "POST"
+      },
+      "id": "73af7eed-5e42-40da-870e-1a70f8a04533",
+      "name": "API - POST listar",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        13792,
+        6384
+      ],
+      "webhookId": "46c594bf-ea90-4afb-a136-6ea55c8ae3b8"
+    },
+    {
+      "parameters": {
+        "path": "torre-importados/app",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "24dc7454-0afe-40f2-86a2-d089b568dd44",
+      "name": "SITE - Abrir Torre de Controle",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        13792,
+        6016
+      ],
+      "webhookId": "a5b6c701-d2e3-4a55-8a62-0228ade27e55"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = \"<!doctype html>\\n<html lang=\\\"pt-BR\\\"><head><meta charset=\\\"utf-8\\\"><meta name=\\\"viewport\\\" content=\\\"width=device-width,initial-scale=1\\\"><title>Torre de Controle | Importados SUL → RIO</title>\\n<style>\\n:root{--bg:#f5f7fa;--surface:#fff;--text:#17253b;--muted:#718097;--line:#e2e8f0;--blue:#2459a6;--green:#147a52;--ltgreen:#e8f6ef;--orange:#af6b14;--ltorange:#fff4df;--red:#ae3844;--ltred:#fdecee}*{box-sizing:border-box}body{margin:0;background:var(--bg);font:14px/1.45 Inter,Segoe UI,Arial,sans-serif;color:var(--text)}.shell{max-width:1600px;margin:auto;padding:30px 27px}.header,.between,.toolbar,.actions,.tabs,.pillrow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.eyebrow{font-size:11px;letter-spacing:.12em;font-weight:750;color:var(--blue)}h1{font-size:26px;letter-spacing:-.8px;margin:5px 0 2px}p{margin:0;color:var(--muted)}.chip{border-radius:50px;padding:6px 10px;background:#edf3fa;color:var(--blue);font-size:12px;font-weight:700}.notice{background:#fff8e8;color:#865a1f;border:1px solid #efd6a1;border-radius:10px;padding:11px 14px;margin:20px 0 18px;font-size:13px}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin:16px 0 25px}.card,.panel{background:var(--surface);border:1px solid var(--line);border-radius:13px}.card{padding:17px 19px}.card small{color:var(--muted);font-weight:650}.card strong{display:block;font-size:27px;margin:5px 0 0}.panel{overflow:hidden}.panelhead{padding:20px 20px 15px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}.panelhead h2{font-size:17px;letter-spacing:-.4px;margin:0 0 3px}.btn{border:1px solid var(--line);background:#fff;color:var(--text);font-weight:700;border-radius:8px;padding:10px 13px;cursor:pointer;font-size:13px}.btn:hover{background:#f2f5f9}.primary{background:var(--blue);border-color:var(--blue);color:#fff}.primary:hover{background:#194783}.search,select,input,textarea{border:1px solid #d5deeb;border-radius:8px;background:#fff;padding:10px 12px;color:var(--text);font:inherit;outline:none}.search:focus,select:focus,input:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 2px #2459a620}.search{min-width:290px}.toolbar{padding:0 20px 15px;justify-content:flex-start}.tablewrap{overflow:auto;max-height:560px}table{border-collapse:separate;border-spacing:0;min-width:1680px;width:100%;font-size:12px}th{position:sticky;top:0;z-index:1;background:#f1f5f9;color:#536176;text-align:left;font-weight:750;border-top:1px solid var(--line);border-bottom:1px solid var(--line);white-space:nowrap}th,td{padding:11px 12px;border-bottom:1px solid #eef1f5}th.manual{background:#e3f5eb;color:#13714d}tbody tr:hover{background:#f8faff}td{white-space:nowrap}td.primarycell{font-weight:750;color:#1e4379}td input,td select{padding:6px 8px;font-size:12px;max-width:130px;border-color:#b9dbcb;background:#f4fbf6}td input.wide{max-width:180px}td input[type=checkbox]{accent-color:#18774f;width:17px;height:17px;vertical-align:middle}th span{display:block;font-size:10px;font-weight:500;margin-top:2px;opacity:.7}.status{display:inline-block;font-size:11px;font-weight:750;border-radius:20px;padding:4px 9px;background:#eef2f7;color:#57677c}.status.ok{background:var(--ltgreen);color:var(--green)}.status.warn{background:var(--ltorange);color:var(--orange)}.status.bad{background:var(--ltred);color:var(--red)}.foot{padding:13px 20px;color:var(--muted);font-size:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}.legend{display:flex;gap:16px;align-items:center;flex-wrap:wrap}.dot{width:9px;height:9px;display:inline-block;border-radius:2px;margin-right:6px;background:#b9c3d0}.dot.manual{background:#62b28b}.dialogbg{display:none;position:fixed;inset:0;background:#12203a80;z-index:20;align-items:center;justify-content:center;padding:18px}.dialogbg.show{display:flex}.dialog{width:min(640px,100%);background:#fff;box-shadow:0 18px 60px #10203940;border-radius:16px;padding:25px}.dialog h2{margin:0 0 7px}.fields{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:20px 0}.field{display:flex;flex-direction:column;gap:5px}.field.wide{grid-column:1/-1}label{font-size:12px;font-weight:750}.hint{font-size:12px;color:var(--muted)}textarea{min-height:100px;resize:vertical}.alert{margin-top:10px;font-size:12px;color:var(--red);min-height:18px}.empty{text-align:center;padding:50px;color:var(--muted)}@media(max-width:850px){.shell{padding:18px 12px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.search{min-width:100%;width:100%}.panelhead{padding:17px}.toolbar{padding:0 17px 14px}h1{font-size:21px}}@media(max-width:480px){.cards{gap:8px}.card{padding:12px}.card strong{font-size:23px}.fields{grid-template-columns:1fr}}\\n[hidden]{display:none!important}.loginwrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.logincard{width:min(400px,100%);background:#fff;border:1px solid var(--line);border-radius:16px;padding:30px;box-shadow:0 18px 50px #10203914}.logincard h1{font-size:22px}.loginform{display:flex;flex-direction:column;gap:14px;margin-top:22px}.loginform .btn{width:100%;padding:12px}.who{font-size:12px;color:var(--muted)}</style></head><body><section id=\\\"login\\\" class=\\\"loginwrap\\\" hidden><div class=\\\"logincard\\\"><div class=\\\"eyebrow\\\">LOGÍSTICA · TORRE DE CONTROLE</div><h1>Importados SUL → CD Rio</h1><p>Acesso restrito. Entre com o usuário de recebimento.</p><div class=\\\"loginform\\\"><div class=\\\"field\\\"><label for=\\\"usuario\\\">Usuário</label><input id=\\\"usuario\\\" autocomplete=\\\"username\\\" maxlength=\\\"60\\\" spellcheck=\\\"false\\\" autocapitalize=\\\"off\\\"></div><div class=\\\"field\\\"><label for=\\\"senha\\\">Senha</label><input id=\\\"senha\\\" type=\\\"password\\\" autocomplete=\\\"current-password\\\" maxlength=\\\"100\\\"></div><div id=\\\"loginError\\\" class=\\\"alert\\\" role=\\\"alert\\\"></div><button class=\\\"btn primary\\\" id=\\\"loginBtn\\\" type=\\\"button\\\">Entrar</button></div></div></section><main class=\\\"shell\\\" id=\\\"app\\\" hidden>\\n<header class=\\\"header\\\"><div><div class=\\\"eyebrow\\\">LOGÍSTICA · TORRE DE CONTROLE</div><h1>Importados SUL <span style=\\\"color:#8b9ab0\\\">→</span> CD Rio</h1><p>Acompanhamento de notas fiscais, movimentação e recebimento</p></div><div class=\\\"actions\\\"><span class=\\\"chip\\\">◉ Homologação · somente leitura</span><span class=\\\"who\\\" id=\\\"whoami\\\"></span><button class=\\\"btn\\\" id=\\\"logout\\\" type=\\\"button\\\">Sair</button></div></header>\\n<div class=\\\"notice\\\" id=\\\"banner\\\"><strong>Consulta ao vivo:</strong> dados carregados do Google Sheets pelo n8n. Cadastro, edição e recebimento estão bloqueados até homologarmos as gravações.</div>\\n<section class=\\\"cards\\\"><div class=\\\"card\\\"><small>Notas cadastradas</small><strong id=\\\"total\\\">0</strong></div><div class=\\\"card\\\"><small>Aguardando embarque</small><strong id=\\\"aguarda\\\">0</strong></div><div class=\\\"card\\\"><small>Em trânsito</small><strong id=\\\"transito\\\">0</strong></div><div class=\\\"card\\\"><small>Recebidas no Rio</small><strong id=\\\"recebidas\\\">0</strong></div></section>\\n<section class=\\\"panel\\\"><div class=\\\"panelhead\\\"><div><h2>Controle de notas fiscais</h2><p>Visualize os registros e edite somente os campos operacionais em verde.</p></div><div class=\\\"actions\\\"><button class=\\\"btn\\\" id=\\\"reset\\\">↻ Atualizar dados</button><button class=\\\"btn primary\\\" id=\\\"add\\\">＋ Cadastrar NFs</button></div></div><div class=\\\"toolbar\\\"><input class=\\\"search\\\" id=\\\"search\\\" placeholder=\\\"Buscar NF, carro, chave, marca ou referência...\\\" aria-label=\\\"Buscar notas\\\"><select id=\\\"filter\\\"><option value=\\\"\\\">Todas as situações</option><option>Aguardando embarque</option><option>Em trânsito</option><option>Recebido no Rio</option></select><span class=\\\"hint\\\" id=\\\"count\\\"></span></div>\\n<div class=\\\"tablewrap\\\"><table><thead><tr><th class=\\\"manual\\\">Carro<span>Manual</span></th><th>NF</th><th>Série</th><th>Chave NF-e</th><th>Marca</th><th>Referência</th><th>Material</th><th>Canal</th><th>Peças</th><th>Valor (R$)</th><th>Agendamento</th><th>Fim conferência SUL</th><th>Embarque</th><th>Prev. chegada</th><th>Romaneio</th><th>Transportadora</th><th>Situação</th><th class=\\\"manual\\\">Recebido Rio<span>Manual</span></th><th class=\\\"manual\\\">Observação<span>Manual</span></th><th>Data recebimento</th><th>Entrada fiscal</th></tr></thead><tbody id=\\\"tbody\\\"></tbody></table></div><footer class=\\\"foot\\\"><span id=\\\"shown\\\"></span><span class=\\\"legend\\\"><span><i class=\\\"dot manual\\\"></i>Preenchimento operacional</span><span><i class=\\\"dot\\\"></i>Dados automáticos do SQL</span></span></footer></section>\\n<p style=\\\"font-size:12px;margin:16px 3px\\\">Versão de homologação · Somente leitura · Acesso restrito a usuários autenticados.</p>\\n</main><div id=\\\"modal\\\" class=\\\"dialogbg\\\" role=\\\"dialog\\\" aria-modal=\\\"true\\\" aria-labelledby=\\\"modalTitle\\\"><div class=\\\"dialog\\\"><div class=\\\"between\\\"><h2 id=\\\"modalTitle\\\">Cadastrar notas fiscais</h2><button class=\\\"btn\\\" id=\\\"close\\\" aria-label=\\\"Fechar\\\">✕</button></div><p>Informe um carro e uma ou mais NFs. O n8n valida todas as NFs no faturamento (SQL) antes de cadastrar o lote.</p><div class=\\\"fields\\\"><div class=\\\"field\\\"><label for=\\\"car\\\">Carro</label><input id=\\\"car\\\" placeholder=\\\"Ex.: 182-26\\\"></div><div class=\\\"field\\\"><label for=\\\"ser\\\">Série padrão</label><input id=\\\"ser\\\" inputmode=\\\"numeric\\\" placeholder=\\\"Ex.: 12\\\" maxlength=\\\"3\\\"></div><div class=\\\"field wide\\\"><label for=\\\"nfs\\\">Notas fiscais (uma por linha)</label><textarea id=\\\"nfs\\\" placeholder=\\\"000027610&#10;000027611&#10;000027612\\\"></textarea><span class=\\\"hint\\\">O lote só é gravado se todas as NFs forem localizadas e nenhuma estiver cadastrada.</span></div></div><div id=\\\"error\\\" class=\\\"alert\\\"></div><div class=\\\"between\\\"><button class=\\\"btn\\\" id=\\\"cancel\\\">Cancelar</button><button class=\\\"btn primary\\\" id=\\\"confirm\\\">Adicionar notas à tabela</button></div></div></div>\\n<script>\\n'use strict';\\nconst sample=[\\n{id:'000027607-12',nf:'000027607',serie:'12',chave:'33261112345678000123550010000276071000000001',carro:'182-26',marca:'FARM',ref:'27.00020',material:'Vestido estampado',canal:'VAREJO',pecas:320,valor:48200,agend:'18/11/2026',conf:'19/11/2026',embarque:'20/11/2026',previsao:'22/11/2026',rom:'415958',transp:'Transportadora exemplo',recebido:false,obs:'',dataRio:'',entrada:''},\\n{id:'000027608-12',nf:'000027608',serie:'12',chave:'33261112345678000123550010000276081000000002',carro:'182-26',marca:'ANIMALE',ref:'26.10010',material:'Blusa feminina',canal:'VAREJO',pecas:180,valor:26500,agend:'17/11/2026',conf:'18/11/2026',embarque:'19/11/2026',previsao:'21/11/2026',rom:'415959',transp:'Transportadora exemplo',recebido:true,obs:'Conferido sem divergências',dataRio:'21/11/2026 14:20',entrada:'22/11/2026'},\\n{id:'000027609-12',nf:'000027609',serie:'12',chave:'33261112345678000123550010000276091000000003',carro:'183-26',marca:'FARM',ref:'27.00300',material:'Calça em linho',canal:'ATACADO',pecas:240,valor:38400,agend:'22/11/2026',conf:'',embarque:'',previsao:'',rom:'',transp:'',recebido:false,obs:'',dataRio:'',entrada:''},\\n{id:'000027610-12',nf:'000027610',serie:'12',chave:'33261112345678000123550010000276101000000004',carro:'183-26',marca:'MARIA FILÓ',ref:'28.00771',material:'Saia midi',canal:'VAREJO',pecas:90,valor:13900,agend:'20/11/2026',conf:'21/11/2026',embarque:'21/11/2026',previsao:'23/11/2026',rom:'415960',transp:'Transportadora exemplo',recebido:false,obs:'',dataRio:'',entrada:''}\\n];\\n// Ative somente após importar e testar o workflow n8n em ambiente protegido.\\n// Informe a base SEM barra final, por exemplo: https://SEU-N8N/webhook/torre-importados\\nconst API_BASE = 'https://n8n.somalabs.com.br/webhook/torre-importados';const LIVE = Boolean(API_BASE.trim());const WRITE_ENABLED = false;\\nlet rows=LIVE?[]:structuredClone(sample);\\nlet busy=false;\\nconst notice=(msg,bad=false)=>{const el=document.querySelector('#banner');el.innerHTML=msg;el.style.background=bad?'#fdecee':'#e8f6ef';el.style.color=bad?'#ae3844':'#147a52';};\\nconst TOKEN_KEY='torreImportadosToken';\\nlet token='';\\nconst store={get(){try{return sessionStorage.getItem(TOKEN_KEY)||''}catch{return ''}},set(v){try{v?sessionStorage.setItem(TOKEN_KEY,v):sessionStorage.removeItem(TOKEN_KEY)}catch{}}};\\nconst tokenExp=t=>{const p=String(t||'').split('.');return p.length===3?Number(p[1]):0};\\n// Envio como formulário (application/x-www-form-urlencoded): requisição simples, sem preflight de CORS.\\nasync function post(endpoint,payload){\\n  const res=await fetch(API_BASE+'/'+endpoint,{method:'POST',body:new URLSearchParams({d:JSON.stringify(payload)})});\\n  let d;try{d=await res.json()}catch{throw Error('Resposta inválida do n8n (HTTP '+res.status+').')}\\n  return {res,d};\\n}\\nasync function api(endpoint,payload={}){\\n  if(!token||tokenExp(token)<=Date.now()){showLogin('Sessão expirada. Entre novamente.');throw Error('Sessão expirada.')}\\n  const {res,d}=await post(endpoint,{...payload,token});\\n  if(res.status===401){showLogin(d.erro||'Sessão expirada. Entre novamente.');throw Error(d.erro||'Sessão expirada.')}\\n  if(!res.ok||!d.ok)throw Error([d.erro||'Não foi possível concluir a operação.',...(d.detalhes||[]).slice(0,6)].join(' | '));\\n  return d;\\n}\\nfunction showLogin(msg=''){\\n  token='';store.set('');rows=[];\\n  document.getElementById('app').hidden=true;document.getElementById('login').hidden=false;\\n  document.getElementById('loginError').textContent=msg;document.getElementById('senha').value='';\\n  document.getElementById('usuario').focus();\\n}\\nfunction showApp(){\\n  document.getElementById('login').hidden=true;document.getElementById('app').hidden=false;\\n  document.getElementById('whoami').textContent='Usuário: '+String(token).split('.')[0];\\n}\\nasync function refresh(){\\n if(!LIVE){rows=structuredClone(sample);render();return;}\\n try{const d=await api('listar');rows=Array.isArray(d.rows)?d.rows:[];render();notice('<strong>Dados sincronizados:</strong> '+rows.length+' nota(s) carregada(s) do Google Sheets.');}\\n catch(e){notice('<strong>Falha ao consultar:</strong> '+esc(e.message),true)}\\n}\\nasync function saveRow(r,acao,valor){\\n  if(!LIVE)return;\\n  if(busy)throw Error('Outra gravação está em andamento.');busy=true;\\n  try{await api('salvar',{id:r.id,acao,valor,...(acao==='recebimento'?{confirmar:true}:{})});await refresh();}\\n  catch(e){await refresh();notice('<strong>Não foi possível salvar:</strong> '+esc(e.message),true);throw e;}\\n  finally{busy=false;}\\n}\\n\\nconst $=s=>document.querySelector(s);const esc=v=>String(v??'').replace(/[&<>\\\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\\\"':'&quot;',\\\"'\\\":'&#39;'}[c]));\\nconst status=r=>r.recebido?'Recebido no Rio':r.embarque?'Em trânsito':'Aguardando embarque';\\nfunction render(){const q=$('#search').value.toLowerCase().trim(),f=$('#filter').value;const vis=rows.filter(r=>(!f||status(r)===f)&&(!q||[r.nf,r.serie,r.chave,r.carro,r.marca,r.ref,r.material].some(x=>String(x??'').toLowerCase().includes(q))));$('#total').textContent=rows.length;$('#aguarda').textContent=rows.filter(r=>status(r)==='Aguardando embarque').length;$('#transito').textContent=rows.filter(r=>status(r)==='Em trânsito').length;$('#recebidas').textContent=rows.filter(r=>r.recebido).length;$('#count').textContent=vis.length+' resultado(s)';$('#shown').textContent=`Exibindo ${vis.length} de ${rows.length} notas`;\\n$('#tbody').innerHTML=vis.length?vis.map(r=>{const badge=status(r),cl=r.recebido?'ok':r.embarque?'warn':'';const cell=(v,primary=false)=>`<td${primary?' class=\\\"primarycell\\\"':''}>${esc(v||'—')}</td>`;return `<tr data-id=\\\"${esc(r.id)}\\\"><td><input class=\\\"carEdit\\\" aria-label=\\\"Carro da NF ${esc(r.nf)}\\\" value=\\\"${esc(r.carro)}\\\" ${WRITE_ENABLED?'':'disabled'}></td>${cell(r.nf,true)}${cell(r.serie)}${cell(r.chave)}${cell(r.marca)}${cell(r.ref)}${cell(r.material)}${cell(r.canal)}${cell(r.pecas)}${cell(r.valor?Number(r.valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'')}${cell(r.agend)}${cell(r.conf)}${cell(r.embarque)}${cell(r.previsao)}${cell(r.rom)}${cell(r.transp)}<td><span class=\\\"status ${cl}\\\">${badge}</span></td><td style=\\\"text-align:center\\\"><input type=\\\"checkbox\\\" class=\\\"receiveEdit\\\" aria-label=\\\"Recebimento da NF ${esc(r.nf)}\\\" ${r.recebido?'checked':''} ${WRITE_ENABLED?'':'disabled'}></td><td><input class=\\\"obsEdit wide\\\" aria-label=\\\"Observação da NF ${esc(r.nf)}\\\" value=\\\"${esc(r.obs)}\\\" ${WRITE_ENABLED?'':'disabled'} placeholder=\\\"Informar divergência\\\"></td>${cell(r.dataRio)}${cell(r.entrada)}</tr>`}).join(''):'<tr><td colspan=\\\"21\\\" class=\\\"empty\\\">Nenhuma nota encontrada.</td></tr>'}\\n$('#tbody').addEventListener('change',async e=>{\\n const tr=e.target.closest('tr[data-id]');if(!tr)return;\\n const r=rows.find(x=>x.id===tr.dataset.id);if(!r)return;\\n const input=e.target;\\n let acao=null,valor=null;\\n if(input.classList.contains('carEdit')){acao='carro';valor=input.value.trim();}\\n if(input.classList.contains('obsEdit')){acao='observacao';valor=input.value.trim();}\\n if(input.classList.contains('receiveEdit')){\\n  if(!input.checked){input.checked=true;alert('Um recebimento confirmado não pode ser desfeito nesta tela.');return;}\\n  if(!confirm('Confirmar o recebimento físico da NF '+r.nf+' no CD Rio?')){input.checked=false;return;}\\n  acao='recebimento';valor='';\\n }\\n if(!acao)return;\\n if(LIVE){try{await saveRow(r,acao,valor)}catch(e){alert(e.message)}}\\n else{\\n  if(acao==='carro')r.carro=valor;\\n  if(acao==='observacao')r.obs=valor;\\n  if(acao==='recebimento'){r.recebido=true;r.dataRio=new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'});}\\n  render();\\n }\\n});\\n$('#search').addEventListener('input',render);$('#filter').addEventListener('change',render);\\nconst close=()=>$('#modal').classList.remove('show');$('#add').onclick=()=>{$('#modal').classList.add('show');$('#error').textContent='';$('#car').focus()};$('#close').onclick=close;$('#cancel').onclick=close;$('#modal').onclick=e=>{if(e.target===$('#modal'))close()};document.addEventListener('keydown',e=>{if(e.key==='Escape')close()});$('#reset').onclick=()=>refresh();\\n$('#confirm').onclick=async()=>{\\n const carro=$('#car').value.trim(),serie=$('#ser').value.trim(),raw=$('#nfs').value.split(/[\\\\n,;]+/).map(x=>x.trim()).filter(Boolean);\\n if(!carro||!/^[0-9]{1,3}$/.test(serie)||!raw.length){$('#error').textContent='Preencha o carro, uma série numérica e pelo menos uma NF.';return}\\n if(raw.some(n=>!/^[0-9]{1,9}$/.test(n))){$('#error').textContent='Cada NF deve ter até 9 dígitos numéricos.';return}\\n const ids=raw.map(n=>n.padStart(9,'0')+'-'+Number(serie));\\n if(new Set(ids).size!==ids.length||ids.some(id=>rows.some(r=>r.id===id))){$('#error').textContent='Existem notas repetidas ou já cadastradas.';return}\\n if(LIVE){\\n  $('#confirm').disabled=true;\\n  try{const d=await api('cadastrar',{carro,serie,nfs:raw});close();$('#car').value='';$('#ser').value='';$('#nfs').value='';await refresh();notice('<strong>Cadastro concluído:</strong> '+esc(d.mensagem||'Notas cadastradas.'));}\\n  catch(e){$('#error').textContent=e.message;}\\n  finally{$('#confirm').disabled=false;}\\n  return;\\n }\\n for(const nf of raw){const id=nf.padStart(9,'0')+'-'+Number(serie);rows.unshift({id,nf:nf.padStart(9,'0'),serie:String(Number(serie)),chave:'',carro,marca:'',ref:'',material:'',canal:'',pecas:'',valor:'',agend:'',conf:'',embarque:'',previsao:'',rom:'',transp:'',recebido:false,obs:'',dataRio:'',entrada:''})}\\n $('#car').value='';$('#ser').value='';$('#nfs').value='';close();render();\\n};\\nif(!WRITE_ENABLED){document.querySelector('#add').disabled=true;document.querySelector('#add').title='Cadastro pendente de homologação';}\\nrender();\\nasync function doLogin(){\\n  const u=document.getElementById('usuario').value.trim(),s=document.getElementById('senha').value;\\n  const btn=document.getElementById('loginBtn'),err=document.getElementById('loginError');\\n  if(!u||!s){err.textContent='Informe usuário e senha.';return}\\n  btn.disabled=true;err.textContent='';\\n  try{\\n    const {res,d}=await post('login',{usuario:u,senha:s});\\n    if(!res.ok||!d.ok||!d.token)throw Error(d.erro||'Usuário ou senha inválidos.');\\n    token=d.token;store.set(token);showApp();render();await refresh();\\n  }catch(x){err.textContent=x.message}\\n  finally{btn.disabled=false;document.getElementById('senha').value='';}\\n}\\ndocument.getElementById('loginBtn').addEventListener('click',doLogin);\\n['usuario','senha'].forEach(id=>document.getElementById(id).addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()}));\\ndocument.getElementById('logout').addEventListener('click',()=>showLogin('Sessão encerrada.'));\\ntoken=store.get();\\nif(token&&tokenExp(token)>Date.now()){showApp();refresh();}else showLogin();\\n\\n</script></body></html>\\n\";\nreturn [{json:{html}}];"
+      },
+      "id": "1e3424a9-d962-471b-8664-65589c1e3404",
+      "name": "SITE - Preparar HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14048,
+        6016
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "a2dbe5ef-116e-4612-bbe6-ff2ce41e2294",
+      "name": "SITE - Exibir HTML",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        14304,
+        6016
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "torre-importados/login",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "4459b579-c37f-48d5-9e7f-2d5437364c40",
+      "name": "AUTH - POST login",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        13792,
+        5664
+      ],
+      "webhookId": "f0183a25-e9fc-471a-bc73-9a8e4a7c5269"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parse=b=>{if(typeof b==='string'){try{b=JSON.parse(b)}catch(e){b={}}}if(b&&typeof b.d==='string'){try{b=JSON.parse(b.d)}catch(e){b={}}}return b&&typeof b==='object'?b:{}};\nconst b=parse($input.first().json.body);\nreturn [{json:{usuario:String(b.usuario??'').trim().slice(0,60),senha:String(b.senha??'').slice(0,100)}}];"
+      },
+      "id": "f0099fc6-8b6b-4787-9c4a-2c6416e0e6ab",
+      "name": "AUTH - Ler credenciais",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14016,
+        5664
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hash",
+        "type": "SHA256",
+        "value": "={{ 'a80a0cc6ad594e9f:' + $json.senha }}",
+        "dataPropertyName": "senhaHash",
+        "encoding": "hex"
+      },
+      "id": "766d13ca-620f-4659-9efe-d4a3db1ec620",
+      "name": "AUTH - Hash senha",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        14240,
+        5664
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Usuário padrão da operação. A senha fica armazenada apenas como hash SHA-256 com salt.\nconst USUARIO='recebimento_importado';\nconst SENHA_HASH='685515497201f26840a261ff0d50c179f1f3e855e4b094e8a18f0184515080ae';\nconst VALIDADE_HORAS=8;\nconst {usuario,senhaHash}=$input.first().json;\nif(usuario!==USUARIO||senhaHash!==SENHA_HASH)return [{json:{ok:false,erro:'Usuário ou senha inválidos.'}}];\nconst exp=Date.now()+VALIDADE_HORAS*3600*1000;\nreturn [{json:{ok:true,usuario,exp,payload:`${usuario}.${exp}`}}];"
+      },
+      "id": "53cb6eaf-e48a-4dfd-9bf0-c7ff0c9f7206",
+      "name": "AUTH - Validar usuário",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14464,
+        5664
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "892dfb4c-cb1f-4832-81dc-247b94fe0b37",
+      "name": "AUTH - Login aceito?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        14688,
+        5664
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.payload }}",
+        "dataPropertyName": "assinatura",
+        "secret": "903a5528a9188d1351bf7cf8f58848dcd57b0be1cf44a7ac3f891794d1dd03ba",
+        "encoding": "hex"
+      },
+      "id": "55edc251-949d-4bfe-9d8d-85cfaa589eac",
+      "name": "AUTH - Assinar token",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        14912,
+        5584
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j=$input.first().json;\nreturn [{json:{ok:true,usuario:j.usuario,token:j.payload+'.'+j.assinatura,expira:new Date(j.exp).toISOString()}}];"
+      },
+      "id": "c710d279-a6b5-4ce3-89f5-4ff63fa0c433",
+      "name": "AUTH - Montar sessão",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        15136,
+        5584
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "16fefce6-9b96-4504-ae36-08ba1406145c",
+      "name": "AUTH - Resposta login",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        15360,
+        5584
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          },
+          "responseCode": 401
+        }
+      },
+      "id": "0b8061d7-a95a-4c45-bad9-c931530c0f6b",
+      "name": "AUTH - Login recusado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        14912,
+        5776
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const parse=b=>{if(typeof b==='string'){try{b=JSON.parse(b)}catch(e){b={}}}if(b&&typeof b.d==='string'){try{b=JSON.parse(b.d)}catch(e){b={}}}return b&&typeof b==='object'?b:{}};\nconst body=parse($input.first().json.body);\nconst p=String(body.token??'').split('.');\nlet tokenOk=false,payload='',sig='';\nif(p.length===3&&p[0]==='recebimento_importado'&&/^\\d{13}$/.test(p[1])&&/^[a-f0-9]{64}$/.test(p[2])){payload=p[0]+'.'+p[1];sig=p[2];tokenOk=Number(p[1])>Date.now();}\ndelete body.token;\nreturn [{json:{tokenOk,payload,sig,body}}];"
+      },
+      "id": "cafc9147-acf8-473e-9624-2c080e93da51",
+      "name": "AUTH listar - Ler token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14016,
+        6384
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.payload || '-' }}",
+        "dataPropertyName": "assinaturaCalc",
+        "secret": "903a5528a9188d1351bf7cf8f58848dcd57b0be1cf44a7ac3f891794d1dd03ba",
+        "encoding": "hex"
+      },
+      "id": "7610080a-9d84-4e51-89fb-82ef0546a023",
+      "name": "AUTH listar - Conferir assinatura",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        14240,
+        6384
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.tokenOk === true && $json.assinaturaCalc === $json.sig }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ebd6eb2c-f55b-445e-afa3-fc763e623a3f",
+      "name": "AUTH listar - Token válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        14464,
+        6384
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          },
+          "responseCode": 401
+        },
+        "respondWith": "json",
+        "responseBody": "{\"ok\":false,\"erro\":\"Sessão inválida ou expirada. Faça login novamente.\"}"
+      },
+      "id": "8e0f3e55-61d9-4494-baeb-b82101fc1262",
+      "name": "AUTH listar - Não autorizado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        14688,
+        6560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const parse=b=>{if(typeof b==='string'){try{b=JSON.parse(b)}catch(e){b={}}}if(b&&typeof b.d==='string'){try{b=JSON.parse(b.d)}catch(e){b={}}}return b&&typeof b==='object'?b:{}};\nconst body=parse($input.first().json.body);\nconst p=String(body.token??'').split('.');\nlet tokenOk=false,payload='',sig='';\nif(p.length===3&&p[0]==='recebimento_importado'&&/^\\d{13}$/.test(p[1])&&/^[a-f0-9]{64}$/.test(p[2])){payload=p[0]+'.'+p[1];sig=p[2];tokenOk=Number(p[1])>Date.now();}\ndelete body.token;\nreturn [{json:{tokenOk,payload,sig,body}}];"
+      },
+      "id": "0fe27817-0abe-4d23-9ce1-b1ea522361ad",
+      "name": "AUTH salvar - Ler token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14016,
+        6688
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.payload || '-' }}",
+        "dataPropertyName": "assinaturaCalc",
+        "secret": "903a5528a9188d1351bf7cf8f58848dcd57b0be1cf44a7ac3f891794d1dd03ba",
+        "encoding": "hex"
+      },
+      "id": "620d0704-3276-44a7-8249-ddde28682df4",
+      "name": "AUTH salvar - Conferir assinatura",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        14240,
+        6688
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.tokenOk === true && $json.assinaturaCalc === $json.sig }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "01b8466c-e948-4dc4-b175-8883b93090fd",
+      "name": "AUTH salvar - Token válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        14464,
+        6688
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          },
+          "responseCode": 401
+        },
+        "respondWith": "json",
+        "responseBody": "{\"ok\":false,\"erro\":\"Sessão inválida ou expirada. Faça login novamente.\"}"
+      },
+      "id": "36cb1f9a-8664-430b-b992-89743dc12483",
+      "name": "AUTH salvar - Não autorizado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        14688,
+        6864
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const parse=b=>{if(typeof b==='string'){try{b=JSON.parse(b)}catch(e){b={}}}if(b&&typeof b.d==='string'){try{b=JSON.parse(b.d)}catch(e){b={}}}return b&&typeof b==='object'?b:{}};\nconst body=parse($input.first().json.body);\nconst p=String(body.token??'').split('.');\nlet tokenOk=false,payload='',sig='';\nif(p.length===3&&p[0]==='recebimento_importado'&&/^\\d{13}$/.test(p[1])&&/^[a-f0-9]{64}$/.test(p[2])){payload=p[0]+'.'+p[1];sig=p[2];tokenOk=Number(p[1])>Date.now();}\ndelete body.token;\nreturn [{json:{tokenOk,payload,sig,body}}];"
+      },
+      "id": "2eeffbb4-252b-4748-8373-ec51a4f01f24",
+      "name": "AUTH cadastrar - Ler token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14016,
+        7104
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.payload || '-' }}",
+        "dataPropertyName": "assinaturaCalc",
+        "secret": "903a5528a9188d1351bf7cf8f58848dcd57b0be1cf44a7ac3f891794d1dd03ba",
+        "encoding": "hex"
+      },
+      "id": "2bbc52f7-f991-4a40-9fed-f0814b9f865b",
+      "name": "AUTH cadastrar - Conferir assinatura",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        14240,
+        7104
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.tokenOk === true && $json.assinaturaCalc === $json.sig }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5ff1b7c3-2e7c-4dd5-8c05-f5f54bc234b9",
+      "name": "AUTH cadastrar - Token válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        14464,
+        7104
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          },
+          "responseCode": 401
+        },
+        "respondWith": "json",
+        "responseBody": "{\"ok\":false,\"erro\":\"Sessão inválida ou expirada. Faça login novamente.\"}"
+      },
+      "id": "7eaddb28-8a70-4834-8c96-6339f0f97129",
+      "name": "AUTH cadastrar - Não autorizado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        14688,
+        7280
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "API - Confirmar cadastro": {
+      "main": [
+        [
+          {
+            "node": "API - Resposta cadastro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Inserir lote": {
+      "main": [
+        [
+          {
+            "node": "API - Confirmar cadastro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Cadastro permitido?": {
+      "main": [
+        [
+          {
+            "node": "API - Inserir lote",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "API - Recusar cadastro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Preparar cadastro em lote": {
+      "main": [
+        [
+          {
+            "node": "API - Cadastro permitido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Ler duplicidades": {
+      "main": [
+        [
+          {
+            "node": "API - Preparar cadastro em lote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Consultar faturamento": {
+      "main": [
+        [
+          {
+            "node": "API - Ler duplicidades",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Lote válido?": {
+      "main": [
+        [
+          {
+            "node": "API - Consultar faturamento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "API - Erro no lote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Validar lote": {
+      "main": [
+        [
+          {
+            "node": "API - Lote válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - POST cadastrar": {
+      "main": [
+        [
+          {
+            "node": "AUTH cadastrar - Ler token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Confirmar alteração": {
+      "main": [
+        [
+          {
+            "node": "API - Resposta salvar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Gravar alteração": {
+      "main": [
+        [
+          {
+            "node": "API - Confirmar alteração",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Precisa gravar?": {
+      "main": [
+        [
+          {
+            "node": "API - Gravar alteração",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "API - Sem mudança",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Alteração preparada?": {
+      "main": [
+        [
+          {
+            "node": "API - Precisa gravar?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "API - Erro ao salvar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Preparar gravação": {
+      "main": [
+        [
+          {
+            "node": "API - Alteração preparada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Ler para alterar": {
+      "main": [
+        [
+          {
+            "node": "API - Preparar gravação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Alteração válida?": {
+      "main": [
+        [
+          {
+            "node": "API - Ler para alterar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "API - Erro de validação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Validar alteração": {
+      "main": [
+        [
+          {
+            "node": "API - Alteração válida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - POST salvar": {
+      "main": [
+        [
+          {
+            "node": "AUTH salvar - Ler token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Formatador de notas": {
+      "main": [
+        [
+          {
+            "node": "API - Resposta listar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Ler notas": {
+      "main": [
+        [
+          {
+            "node": "API - Formatador de notas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SITE - Abrir Torre de Controle": {
+      "main": [
+        [
+          {
+            "node": "SITE - Preparar HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SITE - Preparar HTML": {
+      "main": [
+        [
+          {
+            "node": "SITE - Exibir HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH - POST login": {
+      "main": [
+        [
+          {
+            "node": "AUTH - Ler credenciais",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH - Ler credenciais": {
+      "main": [
+        [
+          {
+            "node": "AUTH - Hash senha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH - Hash senha": {
+      "main": [
+        [
+          {
+            "node": "AUTH - Validar usuário",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH - Validar usuário": {
+      "main": [
+        [
+          {
+            "node": "AUTH - Login aceito?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH - Assinar token": {
+      "main": [
+        [
+          {
+            "node": "AUTH - Montar sessão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH - Montar sessão": {
+      "main": [
+        [
+          {
+            "node": "AUTH - Resposta login",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH - Login aceito?": {
+      "main": [
+        [
+          {
+            "node": "AUTH - Assinar token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AUTH - Login recusado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - POST listar": {
+      "main": [
+        [
+          {
+            "node": "AUTH listar - Ler token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH listar - Ler token": {
+      "main": [
+        [
+          {
+            "node": "AUTH listar - Conferir assinatura",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH listar - Conferir assinatura": {
+      "main": [
+        [
+          {
+            "node": "AUTH listar - Token válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH listar - Token válido?": {
+      "main": [
+        [
+          {
+            "node": "API - Ler notas",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AUTH listar - Não autorizado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH salvar - Ler token": {
+      "main": [
+        [
+          {
+            "node": "AUTH salvar - Conferir assinatura",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH salvar - Conferir assinatura": {
+      "main": [
+        [
+          {
+            "node": "AUTH salvar - Token válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH salvar - Token válido?": {
+      "main": [
+        [
+          {
+            "node": "API - Validar alteração",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AUTH salvar - Não autorizado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH cadastrar - Ler token": {
+      "main": [
+        [
+          {
+            "node": "AUTH cadastrar - Conferir assinatura",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH cadastrar - Conferir assinatura": {
+      "main": [
+        [
+          {
+            "node": "AUTH cadastrar - Token válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AUTH cadastrar - Token válido?": {
+      "main": [
+        [
+          {
+            "node": "API - Validar lote",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AUTH cadastrar - Não autorizado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "f0fcf7e9-da07-483a-a3eb-d081b04ed8d8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8be17884f846555e86aa11ffd59f4aeed7d5c3fbab9e5c5d5e19e63c0a6bfb6e"
+  },
+  "id": "M4nSQDdme2NjprCvMCWGi",
+  "tags": []
+}

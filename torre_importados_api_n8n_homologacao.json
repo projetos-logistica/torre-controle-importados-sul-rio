@@ -1,0 +1,1005 @@
+{
+  "name": "Torre de Controle Importados - API HTML (homologacao)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "torre-importados/listar",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://SEU-SITE-INTERNO.example"
+        }
+      },
+      "id": "integracao-01",
+      "name": "API - GET listar",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "integracao-02",
+      "name": "API - Ler notas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        420,
+        0
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "OV7j86HlF1UdMJzP",
+          "name": "Google Sheets account 5"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows=$input.all().map(i=>i.json).filter(r=>String(r.IDENTIFICACAO||'').trim());\nconst t=v=>String(v??'').trim().replace(/^'/,'');\nconst yes=v=>/^sim$/i.test(t(v));\nconst result=rows.map(r=>({\n id:t(r.IDENTIFICACAO),nf:t(r.NOTA_FISCAL),serie:t(r.SERIE_NF),chave:t(r.CHAVE_NFE),carro:t(r.CARRO),\n marca:t(r.MARCA),ref:t(r.REFERENCIA),material:t(r.DESCRICAO_MATERIAL),canal:t(r.CANAL),\n pecas:r.QUANTIDADE??'',valor:r.VALOR??'',agend:t(r.DATA_AGENDAMENTO),conf:t(r.FIM_CONFERENCIA_SUL),\n embarque:t(r.DATA_EMBARQUE),previsao:t(r.PREVISAO_CHEGADA),rom:t(r.ROMANEIO),transp:t(r.TRANSPORTADORA),\n recebido:yes(r.RECEBIMENTO_RIO),obs:t(r.OBSERVACAO_RECEBIMENTO),dataRio:t(r.DATA_RECEBIMENTO_RIO),\n entrada:t(r.DATA_ENTRADA_FISCAL),mensagem:t(r.MENSAGEM),statusIntegracao:t(r.STATUS_INTEGRACAO),\n inicioConferencia:t(r.INICIO_CONFERENCIA_SUL),placa:t(r.PLACA),motorista:t(r.MOTORISTA),atualizado:t(r.ULTIMA_ATUALIZACAO)\n}));\nreturn [{json:{ok:true,total:result.length,rows:result}}];"
+      },
+      "id": "integracao-03",
+      "name": "API - Formatador de notas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "integracao-04",
+      "name": "API - Resposta listar",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        860,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "torre-importados/salvar",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://SEU-SITE-INTERNO.example"
+        }
+      },
+      "id": "integracao-05",
+      "name": "API - POST salvar",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let b=$input.first().json.body??{};\nif(typeof b==='string'){try{b=JSON.parse(b)}catch(e){b={}}}\nconst id=String(b.id??'').replace(/^'/,'').trim();\nconst action=String(b.acao??'').trim();\nconst novo=String(b.valor??'').trim();\nlet erro='';\nif(!/^\\d{9}-\\d{1,3}$/.test(id))erro='Identificação inválida.';\nelse if(!['carro','observacao','recebimento'].includes(action))erro='Ação não permitida.';\nelse if(action==='carro'&&(!novo||novo.length>60))erro='Informe um carro válido (até 60 caracteres).';\nelse if(action==='observacao'&&novo.length>500)erro='Observação acima de 500 caracteres.';\nelse if(action==='recebimento'&&b.confirmar!==true)erro='Confirmação explícita necessária.';\nreturn [{json:{ok:!erro,erro,id,acao:action,valor:novo}}];"
+      },
+      "id": "integracao-06",
+      "name": "API - Validar alteração",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "integracao-07",
+      "name": "API - Alteração válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        620,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "integracao-08",
+      "name": "API - Erro de validação",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        850,
+        470
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "integracao-09",
+      "name": "API - Ler para alterar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        850,
+        260
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "OV7j86HlF1UdMJzP",
+          "name": "Google Sheets account 5"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const req=$('API - Validar alteração').first().json;\nconst t=v=>String(v??'').trim().replace(/^'/,'');\nconst rows=$input.all().map(i=>i.json).filter(r=>t(r.IDENTIFICACAO)===req.id);\nconst fail=erro=>[{json:{ok:false,erro}}];\nif(rows.length!==1)return fail(rows.length?'Identificação duplicada na planilha.':'NF não encontrada na planilha.');\nconst row=rows[0];const now=$now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd HH:mm:ss');\nconst upd={IDENTIFICACAO:req.id,ULTIMA_ATUALIZACAO:now};\nconst safe=v=>\"'\"+v.replace(/^'/,'');\nif(req.acao==='carro'){if(t(row.CARRO)===req.valor)return [{json:{ok:true,semMudanca:true}}];upd.CARRO=safe(req.valor)}\nif(req.acao==='observacao'){if(t(row.OBSERVACAO_RECEBIMENTO)===req.valor)return [{json:{ok:true,semMudanca:true}}];upd.OBSERVACAO_RECEBIMENTO=req.valor?safe(req.valor):''}\nif(req.acao==='recebimento'){\n if(/^sim$/i.test(t(row.RECEBIMENTO_RIO)))return fail('Esta NF já foi recebida. Não é permitido desfazer o recebimento.');\n upd.RECEBIMENTO_RIO='Sim';upd.DATA_RECEBIMENTO_RIO=now;\n}\nreturn [{json:{ok:true,semMudanca:false,...upd}}];"
+      },
+      "id": "integracao-10",
+      "name": "API - Preparar gravação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1070,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "integracao-11",
+      "name": "API - Alteração preparada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1290,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "integracao-12",
+      "name": "API - Erro ao salvar",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1510,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.semMudanca }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "typeValidation": "loose"
+          }
+        }
+      },
+      "id": "integracao-13",
+      "name": "API - Precisa gravar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1510,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "integracao-14",
+      "name": "API - Sem mudança",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1730,
+        370
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED",
+          "handlingExtraData": "ignoreIt"
+        },
+        "operation": "update",
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "IDENTIFICACAO"
+          ],
+          "schema": []
+        }
+      },
+      "id": "integracao-15",
+      "name": "API - Gravar alteração",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1730,
+        180
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "OV7j86HlF1UdMJzP",
+          "name": "Google Sheets account 5"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{ok:true,mensagem:'Alteração salva na planilha Google Sheets.'}}];"
+      },
+      "id": "integracao-16",
+      "name": "API - Confirmar alteração",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1950,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "integracao-17",
+      "name": "API - Resposta salvar",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        2170,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "torre-importados/cadastrar",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://SEU-SITE-INTERNO.example"
+        }
+      },
+      "id": "integracao-18",
+      "name": "API - POST cadastrar",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        730
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let b=$input.first().json.body??{};if(typeof b==='string'){try{b=JSON.parse(b)}catch(e){b={}}}\nconst car=String(b.carro??'').trim();const serie=String(b.serie??'').trim();const nfs=Array.isArray(b.nfs)?b.nfs.map(v=>String(v).trim()):[];\nlet erro='';\nif(!car||car.length>60)erro='Informe o carro (até 60 caracteres).';\nelse if(!/^\\d{1,3}$/.test(serie))erro='Série inválida.';\nelse if(!nfs.length||nfs.length>100)erro='Informe de 1 a 100 NFs.';\nelse if(nfs.some(n=>!/^\\d{1,9}$/.test(n)))erro='As NFs devem conter até 9 dígitos numéricos.';\nconst ids=nfs.map(n=>n.padStart(9,'0')+'-'+Number(serie));\nif(!erro&&new Set(ids).size!==ids.length)erro='Existem NFs repetidas no lote.';\nreturn [{json:{ok:!erro,erro,carro:car,serie:String(Number(serie)),ids,nfs:ids.join(','),chaves:''}}];"
+      },
+      "id": "integracao-19",
+      "name": "API - Validar lote",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        730
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "integracao-20",
+      "name": "API - Lote válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        620,
+        730
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "integracao-21",
+      "name": "API - Erro no lote",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        840,
+        890
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SET NOCOUNT ON;\n-- ============================================================\n-- CONSULTA CONSOLIDADA - TORRE DE CONTROLE IMPORTADOS SUL x RIO\n-- Faturamento + eventos SUL + entrada fiscal, em uma unica consulta.\n-- Parametros montados no n8n contendo APENAS digitos, virgula e hifen\n-- (validados no node anterior). Requer STRING_SPLIT (compatibilidade 130+).\n-- ============================================================\nDECLARE @CHAVES VARCHAR(MAX) = '{{ $json.chaves }}';\nDECLARE @NFS    VARCHAR(MAX) = '{{ $json.nfs }}';\n\n;WITH ALVO_CHAVE AS (\n    SELECT DISTINCT CAST(value AS VARCHAR(44)) AS CHAVE_NFE\n    FROM STRING_SPLIT(@CHAVES, ',')\n    WHERE LEN(value) = 44\n), ALVO_NF AS (\n    SELECT DISTINCT\n        CAST(LEFT(value, CHARINDEX('-', value) - 1) AS VARCHAR(20)) AS NF_SAIDA,\n        CAST(SUBSTRING(value, CHARINDEX('-', value) + 1, 10) AS VARCHAR(10)) AS SERIE_NF\n    FROM STRING_SPLIT(@NFS, ',')\n    WHERE CHARINDEX('-', value) > 1\n), NF AS (\n    SELECT A.FILIAL, A.NF_SAIDA, A.SERIE_NF, A.CHAVE_NFE, A.NOME_CLIFOR\n    FROM FATURAMENTO A\n    INNER JOIN ALVO_CHAVE C ON C.CHAVE_NFE = A.CHAVE_NFE\n\n    UNION\n\n    SELECT A.FILIAL, A.NF_SAIDA, A.SERIE_NF, A.CHAVE_NFE, A.NOME_CLIFOR\n    FROM FATURAMENTO A\n    INNER JOIN ALVO_NF N\n        ON N.NF_SAIDA = A.NF_SAIDA\n       AND N.SERIE_NF = A.SERIE_NF\n    WHERE A.CHAVE_NFE IS NOT NULL\n), ITENS AS (\n    SELECT\n        FP.FILIAL, FP.NF_SAIDA, FP.SERIE_NF,\n        SUM(FP.QTDE)  AS QUANTIDADE,\n        SUM(FP.VALOR) AS VALOR,\n        COUNT(DISTINCT LTRIM(RTRIM(LR.DESC_REDE_LOJAS))) AS TOTAL_MARCAS,\n        MAX(LTRIM(RTRIM(LR.DESC_REDE_LOJAS)))            AS MARCA,\n        -- Regra: uma NF possui um unico produto (podendo dividir em cores)\n        COUNT(DISTINCT LTRIM(RTRIM(FP.PRODUTO)))         AS TOTAL_PRODUTOS,\n        MAX(LTRIM(RTRIM(FP.PRODUTO)))                    AS REFERENCIA,\n        MAX(LTRIM(RTRIM(P.DESC_PRODUTO)))                AS DESCRICAO_MATERIAL\n    FROM FATURAMENTO_PROD FP\n    INNER JOIN NF\n        ON NF.FILIAL = FP.FILIAL\n       AND NF.NF_SAIDA = FP.NF_SAIDA\n       AND NF.SERIE_NF = FP.SERIE_NF\n    LEFT JOIN PRODUTOS P    ON P.PRODUTO = FP.PRODUTO\n    LEFT JOIN LOJAS_REDE LR ON LR.REDE_LOJAS = P.REDE_LOJAS\n    GROUP BY FP.FILIAL, FP.NF_SAIDA, FP.SERIE_NF\n), AG AS (\n    SELECT\n        R.CHAVE_NFE, R.DATA_HORA_AGENDAMENTO,\n        R.DATA_INICIO_RECEBIMENTO, R.DATA_FIM_RECEBIMENTO,\n        ROW_NUMBER() OVER (\n            PARTITION BY R.CHAVE_NFE\n            ORDER BY R.DATA_HORA_AGENDAMENTO DESC,\n                     R.DATA_FIM_RECEBIMENTO DESC,\n                     R.DATA_INICIO_RECEBIMENTO DESC\n        ) AS RN\n    FROM LL_RECEBIMENTO_AGENDADO R\n    INNER JOIN (SELECT DISTINCT CHAVE_NFE FROM NF) K ON K.CHAVE_NFE = R.CHAVE_NFE\n), EMB AS (\n    SELECT\n        I.CHAVE_NFE, C.ROMANEIO, C.TRANSPORTADORA, C.PLACA, C.MOTORISTA, C.DATA_EMBARQUE,\n        ROW_NUMBER() OVER (\n            PARTITION BY I.CHAVE_NFE\n            ORDER BY CASE WHEN C.DATA_EMBARQUE IS NOT NULL THEN 0 ELSE 1 END,\n                     C.DATA_EMBARQUE DESC,\n                     C.DATA_HORA_CRIACAO DESC,\n                     C.ROMANEIO DESC\n        ) AS RN\n    FROM SS_ROMANEIOS_CARGA_ITEM I\n    INNER JOIN SS_ROMANEIOS_CARGA C ON C.ROMANEIO = I.ROMANEIO\n    INNER JOIN (SELECT DISTINCT CHAVE_NFE FROM NF) K ON K.CHAVE_NFE = I.CHAVE_NFE\n    WHERE LTRIM(RTRIM(C.TIPO_ROMANEIO)) = 'SUL X RJ (IMPORTADO)'\n), ENT AS (\n    SELECT\n        E.CHAVE_NFE, E.DATA_DIGITACAO,\n        ROW_NUMBER() OVER (\n            PARTITION BY E.CHAVE_NFE\n            ORDER BY E.DATA_DIGITACAO DESC, E.NUMERO_ENTRADA DESC\n        ) AS RN\n    FROM ENTRADAS E\n    INNER JOIN (SELECT DISTINCT CHAVE_NFE FROM NF) K ON K.CHAVE_NFE = E.CHAVE_NFE\n    WHERE ISNULL(E.NOTA_CANCELADA, 0) = 0\n      AND E.DATA_DIGITACAO IS NOT NULL\n)\nSELECT\n    NF.CHAVE_NFE,\n    LTRIM(RTRIM(NF.NF_SAIDA)) AS NF_SAIDA,\n    LTRIM(RTRIM(NF.SERIE_NF)) AS SERIE_NF,\n    LTRIM(RTRIM(NF.FILIAL))   AS FILIAL,\n\n    CASE\n        WHEN LTRIM(RTRIM(NF.NOME_CLIFOR)) = 'CONTROLE QUALIDADE ATAC'   THEN 'ATACADO'\n        WHEN LTRIM(RTRIM(NF.NOME_CLIFOR)) = 'CONTROLE QUALIDADE VAREJO' THEN 'VAREJO'\n        ELSE LTRIM(RTRIM(NF.NOME_CLIFOR))\n    END AS CANAL,\n\n    CASE WHEN I.TOTAL_MARCAS > 1   THEN 'MULTIMARCAS' ELSE I.MARCA END AS MARCA,\n    CASE WHEN I.TOTAL_PRODUTOS > 1 THEN 'MÚLTIPLAS' ELSE I.REFERENCIA END AS REFERENCIA,\n    CASE WHEN I.TOTAL_PRODUTOS > 1 THEN 'MÚLTIPLAS' ELSE I.DESCRICAO_MATERIAL END AS DESCRICAO_MATERIAL,\n    I.QUANTIDADE,\n    I.VALOR,\n\n    -- Datas em ISO (yyyy-mm-dd): interpretadas corretamente pelo Sheets em qualquer localidade\n    CONVERT(VARCHAR(10), AG.DATA_HORA_AGENDAMENTO, 23)   AS DATA_AGENDAMENTO,\n    CONVERT(VARCHAR(10), AG.DATA_INICIO_RECEBIMENTO, 23) AS INICIO_CONFERENCIA_SUL,\n    CONVERT(VARCHAR(10), AG.DATA_FIM_RECEBIMENTO, 23)    AS FIM_CONFERENCIA_SUL,\n\n    CAST(EMB.ROMANEIO AS VARCHAR(30))   AS ROMANEIO,\n    LTRIM(RTRIM(EMB.TRANSPORTADORA))    AS TRANSPORTADORA,\n    LTRIM(RTRIM(EMB.PLACA))             AS PLACA,\n    LTRIM(RTRIM(EMB.MOTORISTA))         AS MOTORISTA,\n    CONVERT(VARCHAR(10), EMB.DATA_EMBARQUE, 23) AS DATA_EMBARQUE,\n    CONVERT(VARCHAR(10), DATEADD(DAY, 2, CAST(EMB.DATA_EMBARQUE AS DATE)), 23) AS PREVISAO_CHEGADA,\n\n    CONVERT(VARCHAR(10), ENT.DATA_DIGITACAO, 23) AS DATA_ENTRADA_FISCAL\nFROM NF\nLEFT JOIN ITENS I\n    ON I.FILIAL = NF.FILIAL\n   AND I.NF_SAIDA = NF.NF_SAIDA\n   AND I.SERIE_NF = NF.SERIE_NF\nLEFT JOIN AG  ON AG.CHAVE_NFE  = NF.CHAVE_NFE AND AG.RN = 1\nLEFT JOIN EMB ON EMB.CHAVE_NFE = NF.CHAVE_NFE AND EMB.RN = 1\nLEFT JOIN ENT ON ENT.CHAVE_NFE = NF.CHAVE_NFE AND ENT.RN = 1;\n"
+      },
+      "id": "integracao-22",
+      "name": "API - Consultar faturamento",
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        840,
+        710
+      ],
+      "credentials": {
+        "microsoftSql": {
+          "id": "JxEAFpnayhrOYRpo",
+          "name": "sql_serve_somalog"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "integracao-23",
+      "name": "API - Ler duplicidades",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1070,
+        710
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "OV7j86HlF1UdMJzP",
+          "name": "Google Sheets account 5"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const req=$('API - Validar lote').first().json;\nconst sql=$('API - Consultar faturamento').all().map(x=>x.json).filter(x=>x.CHAVE_NFE);\nconst t=v=>String(v??'').trim().replace(/^'/,'');const num=v=>String(v??'').replace(/\\D/g,'');\nconst id=(nf,serie)=>num(nf).padStart(9,'0')+'-'+String(Number(num(serie)));\nconst byId=new Map();for(const d of sql){const k=id(d.NF_SAIDA,d.SERIE_NF);if(!byId.has(k))byId.set(k,[]);byId.get(k).push(d)}\nconst existing=$input.all().map(x=>x.json).filter(x=>t(x.IDENTIFICACAO));\nconst knownIds=new Set(existing.map(r=>t(r.IDENTIFICACAO)));\nconst knownKeys=new Set(existing.map(r=>num(r.CHAVE_NFE)).filter(Boolean));\nconst failures=[];const newRows=[];const now=$now.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd HH:mm:ss');\nconst T=v=>\"'\"+t(v);\nfor(const k of req.ids){\n const list=byId.get(k)||[];\n if(knownIds.has(k)){failures.push(`${k}: já cadastrada`);continue}\n if(!list.length){failures.push(`${k}: não localizada no faturamento`);continue}\n if(list.length>1){failures.push(`${k}: localizada em mais de uma filial, use a chave`);continue}\n const d=list[0];if(knownKeys.has(num(d.CHAVE_NFE))){failures.push(`${k}: chave já cadastrada`);continue}\n newRows.push({IDENTIFICACAO:T(k),NOTA_FISCAL:T(num(d.NF_SAIDA).padStart(9,'0')),CARRO:T(req.carro),\n MARCA:t(d.MARCA),REFERENCIA:T(d.REFERENCIA),DESCRICAO_MATERIAL:T(d.DESCRICAO_MATERIAL),CANAL:t(d.CANAL),\n QUANTIDADE:Number(d.QUANTIDADE??0),VALOR:Number(d.VALOR??0),STATUS_INTEGRACAO:'INTEGRADO',\n DATA_AGENDAMENTO:t(d.DATA_AGENDAMENTO),INICIO_CONFERENCIA_SUL:t(d.INICIO_CONFERENCIA_SUL),FIM_CONFERENCIA_SUL:t(d.FIM_CONFERENCIA_SUL),\n DATA_EMBARQUE:t(d.DATA_EMBARQUE),PREVISAO_CHEGADA:t(d.PREVISAO_CHEGADA),RECEBIMENTO_RIO:'Não',\n DATA_ENTRADA_FISCAL:t(d.DATA_ENTRADA_FISCAL),ROMANEIO:t(d.ROMANEIO)?T(d.ROMANEIO):'',PLACA:t(d.PLACA)?T(d.PLACA):'',\n MOTORISTA:t(d.MOTORISTA)?T(d.MOTORISTA):'',SERIE_NF:T(d.SERIE_NF),CHAVE_NFE:T(d.CHAVE_NFE),\n TRANSPORTADORA:t(d.TRANSPORTADORA)?T(d.TRANSPORTADORA):'',MENSAGEM:'',ULTIMA_ATUALIZACAO:now});\n}\n// Não gravar lote parcialmente: evita registros inesperados no fechamento operacional.\nif(failures.length)return [{json:{ok:false,erro:'Lote recusado. Nenhuma NF foi cadastrada.',detalhes:failures}}];\nreturn newRows.map(r=>({json:{ok:true,...r}}));"
+      },
+      "id": "integracao-24",
+      "name": "API - Preparar cadastro em lote",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1290,
+        710
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "integracao-25",
+      "name": "API - Cadastro permitido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1510,
+        710
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "integracao-26",
+      "name": "API - Recusar cadastro",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1730,
+        890
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1IR2x958ruchBiYUOOAECPMXTxhrPR5Js2KaVuTJbFSo/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONTROLE",
+          "mode": "name"
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED",
+          "handlingExtraData": "ignoreIt"
+        },
+        "operation": "append",
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "id": "integracao-27",
+      "name": "API - Inserir lote",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1730,
+        700
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "OV7j86HlF1UdMJzP",
+          "name": "Google Sheets account 5"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "jsCode": "const ids=$('API - Validar lote').first().json.ids;return [{json:{ok:true,quantidade:ids.length,mensagem:`${ids.length} NF(s) cadastrada(s) na planilha.`,ids}}];"
+      },
+      "id": "integracao-28",
+      "name": "API - Confirmar cadastro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1950,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "integracao-29",
+      "name": "API - Resposta cadastro",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        2170,
+        700
+      ]
+    }
+  ],
+  "connections": {
+    "API - GET listar": {
+      "main": [
+        [
+          {
+            "node": "API - Ler notas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Ler notas": {
+      "main": [
+        [
+          {
+            "node": "API - Formatador de notas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Formatador de notas": {
+      "main": [
+        [
+          {
+            "node": "API - Resposta listar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - POST salvar": {
+      "main": [
+        [
+          {
+            "node": "API - Validar alteração",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Validar alteração": {
+      "main": [
+        [
+          {
+            "node": "API - Alteração válida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Alteração válida?": {
+      "main": [
+        [
+          {
+            "node": "API - Ler para alterar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "API - Erro de validação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Ler para alterar": {
+      "main": [
+        [
+          {
+            "node": "API - Preparar gravação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Preparar gravação": {
+      "main": [
+        [
+          {
+            "node": "API - Alteração preparada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Alteração preparada?": {
+      "main": [
+        [
+          {
+            "node": "API - Precisa gravar?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "API - Erro ao salvar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Precisa gravar?": {
+      "main": [
+        [
+          {
+            "node": "API - Gravar alteração",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "API - Sem mudança",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Gravar alteração": {
+      "main": [
+        [
+          {
+            "node": "API - Confirmar alteração",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Confirmar alteração": {
+      "main": [
+        [
+          {
+            "node": "API - Resposta salvar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - POST cadastrar": {
+      "main": [
+        [
+          {
+            "node": "API - Validar lote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Validar lote": {
+      "main": [
+        [
+          {
+            "node": "API - Lote válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Lote válido?": {
+      "main": [
+        [
+          {
+            "node": "API - Consultar faturamento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "API - Erro no lote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Consultar faturamento": {
+      "main": [
+        [
+          {
+            "node": "API - Ler duplicidades",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Ler duplicidades": {
+      "main": [
+        [
+          {
+            "node": "API - Preparar cadastro em lote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Preparar cadastro em lote": {
+      "main": [
+        [
+          {
+            "node": "API - Cadastro permitido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Cadastro permitido?": {
+      "main": [
+        [
+          {
+            "node": "API - Inserir lote",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "API - Recusar cadastro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Inserir lote": {
+      "main": [
+        [
+          {
+            "node": "API - Confirmar cadastro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API - Confirmar cadastro": {
+      "main": [
+        [
+          {
+            "node": "API - Resposta cadastro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}
